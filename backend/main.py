@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 import db
-from extractor import extract_pages, extract_facts_from_page
+from extractor import extract_pages, extract_facts_from_page, extract_facts_from_document
 from embedder import embed, embedding_to_list
 from comparator import find_candidate_pairs, compare_facts
 
@@ -85,29 +85,28 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     db.insert_document(doc_id, file.filename, len(pages), quality_score)
 
-    # Extract + embed facts
+    # Extract + embed facts (single-call whole-document extraction)
     new_facts = []
     try:
-        for page_number, text, page_quality in pages:
-            raw_facts = extract_facts_from_page(page_number, text, page_quality)
-            for rf in raw_facts:
-                fact_id = str(uuid.uuid4())
-                embedding = embed(rf["claim"])
-                fact = {
-                    "id": fact_id,
-                    "document_id": doc_id,
-                    "claim": rf["claim"],
-                    "fact_type": rf.get("fact_type", "entity"),
-                    "temporal_scope": rf.get("temporal_scope"),
-                    "entity_scope": rf.get("entity_scope"),
-                    "exact_quote": rf["exact_quote"],
-                    "page_number": page_number,
-                    "confidence": rf.get("confidence", 0.5),
-                    "uncertainty_reason": rf.get("uncertainty_reason"),
-                    "embedding": json.dumps(embedding_to_list(embedding)),
-                }
-                db.insert_fact(fact)
-                new_facts.append(fact)
+        raw_facts = extract_facts_from_document(pages)
+        for rf in raw_facts:
+            fact_id = str(uuid.uuid4())
+            embedding = embed(rf["claim"])
+            fact = {
+                "id": fact_id,
+                "document_id": doc_id,
+                "claim": rf["claim"],
+                "fact_type": rf.get("fact_type", "entity"),
+                "temporal_scope": rf.get("temporal_scope"),
+                "entity_scope": rf.get("entity_scope"),
+                "exact_quote": rf.get("exact_quote") or rf["claim"],
+                "page_number": rf.get("page_number") or (pages[0][0] if pages else 1),
+                "confidence": float(rf.get("confidence", 0.85)),
+                "uncertainty_reason": rf.get("uncertainty_reason"),
+                "embedding": json.dumps(embedding_to_list(embedding)),
+            }
+            db.insert_fact(fact)
+            new_facts.append(fact)
     except RuntimeError as e:
         db.delete_document(doc_id)
         if save_path.exists():
@@ -126,7 +125,7 @@ async def upload_pdf(file: UploadFile = File(...)):
     relationships_created = 0
 
     if existing_facts:
-        candidates = find_candidate_pairs(new_facts, existing_facts)
+        candidates = find_candidate_pairs(new_facts, existing_facts)[:8]
 
         # Resolve document names for readable comparison prompts
         doc_cache = {}

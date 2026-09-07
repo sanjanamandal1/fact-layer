@@ -23,10 +23,11 @@ def get_client():
 
 _ACTIVE_MODEL = None
 CANDIDATE_MODELS = [
+    "gemini-flash-lite-latest",
+    "gemini-2.5-flash-lite",
     "gemini-flash-latest",
+    "gemini-3.5-flash-lite",
     "gemini-3.5-flash",
-    "gemini-3.8-flash",
-    "gemini-2.5-flash",
 ]
 
 def generate_content_with_fallback(client, contents):
@@ -50,14 +51,15 @@ def generate_content_with_fallback(client, contents):
             return response
         except genai_errors.ClientError as e:
             if "429" in str(e) or "resource_exhausted" in str(e).lower() or "quota" in str(e).lower():
-                # Free-tier quota exceeded — pause 5 seconds and retry
-                time.sleep(5.0)
+                # Free-tier quota exceeded on this model — try pause or fall through to next model
+                time.sleep(2.0)
                 try:
                     response = client.models.generate_content(model=model_name, contents=contents, config=config)
                     _ACTIVE_MODEL = model_name
                     return response
                 except Exception:
-                    pass
+                    last_error = e
+                    continue
             if "404" in str(e) or "not available" in str(e).lower() or "not found" in str(e).lower():
                 last_error = e
                 continue
@@ -242,27 +244,85 @@ def extract_facts_from_page(page_number: int, text: str, page_quality: float) ->
                     f["uncertainty_reason"] = f"Source page quality is low ({page_quality:.0%})"
 
         return facts
-
-    except genai_errors.ClientError as e:
-        # API-level error (rate limit, auth, etc.) — surface clearly
+    except Exception as e:
         return [{
-            "claim": f"API error on page {page_number}",
+            "claim": f"Extraction error on page {page_number}",
             "fact_type": "state",
             "temporal_scope": None,
             "entity_scope": None,
             "exact_quote": text[:200] if text else "",
             "confidence": 0.0,
-            "uncertainty_reason": f"Gemini API error: {str(e)[:120]}",
+            "uncertainty_reason": str(e),
         }]
 
-    except (json.JSONDecodeError, Exception):
-        # Extraction failed — we surface this as an explicit failure case
-        return [{
-            "claim": f"Extraction failed for page {page_number}",
-            "fact_type": "state",
-            "temporal_scope": None,
-            "entity_scope": None,
-            "exact_quote": text[:200] if text else "",
-            "confidence": 0.0,
-            "uncertainty_reason": "LLM returned unparseable output for this page.",
-        }]
+
+DOCUMENT_EXTRACTION_PROMPT = """You are a financial and legal document analyst.
+Extract all meaningful, self-contained facts from the document pages below. Focus on:
+- Numerical facts: revenue, profit, headcount, shares, percentages, valuations, debt
+- Entity facts: company names, director names, addresses, registration/CIN numbers
+- State facts: roles or status (active/resigned), company status (listed/unlisted)
+- Date facts: incorporation dates, filing dates, event dates
+
+For each fact return a JSON object:
+{{
+  "page_number": <integer page number from which this fact was extracted>,
+  "claim": "clear, self-contained statement of the fact",
+  "fact_type": "numerical" | "entity" | "state" | "date",
+  "temporal_scope": "FY2023" | "Q1 2024" | "as of March 2024" | null,
+  "entity_scope": "standalone" | "consolidated" | null,
+  "exact_quote": "verbatim sentence(s) from that page's text supporting this fact",
+  "confidence": 0.0 to 1.0,
+  "uncertainty_reason": "brief reason if confidence < 0.75, else null"
+}}
+
+Rules:
+- Only extract facts explicitly stated in the text — never infer or assume.
+- exact_quote must be verbatim from that page.
+- Make sure "page_number" correctly matches the section heading for that page.
+- Return ONLY a valid JSON array of fact objects. If nothing meaningful, return [].
+
+Document pages:
+{pages_content}
+"""
+
+
+def extract_facts_from_document(pages: List[Tuple[int, str, float]]) -> List[dict]:
+    """
+    Extract facts from document pages in a single coherent LLM call.
+    Avoids O(pages) API calls, completely eliminating 429 rate limit issues.
+    """
+    if not pages:
+        return []
+
+    sections = []
+    for page_number, text, quality in pages:
+        if text.strip() and quality >= 0.4:
+            clean_text = text[:3000].strip()
+            sections.append(f"--- PAGE {page_number} ---\n{clean_text}")
+
+    if not sections:
+        return []
+
+    full_content = "\n\n".join(sections)
+    prompt = DOCUMENT_EXTRACTION_PROMPT.format(pages_content=full_content)
+
+    client = get_client()
+    response = generate_content_with_fallback(client, prompt)
+    raw = response.text.strip() if response and response.text else ""
+    facts = parse_json_facts(raw)
+
+    valid_page_numbers = {p[0] for p in pages}
+    first_page = pages[0][0] if pages else 1
+    page_qualities = {p[0]: p[2] for p in pages}
+
+    for f in facts:
+        if not isinstance(f.get("page_number"), int) or f["page_number"] not in valid_page_numbers:
+            f["page_number"] = first_page
+
+        q = page_qualities.get(f["page_number"], 1.0)
+        if q < 0.7:
+            f["confidence"] = round(f.get("confidence", 0.5) * q, 2)
+            if not f.get("uncertainty_reason"):
+                f["uncertainty_reason"] = f"Source page quality is low ({q:.0%})"
+
+    return facts

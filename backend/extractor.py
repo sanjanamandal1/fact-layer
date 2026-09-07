@@ -8,7 +8,7 @@ from google.genai import errors as genai_errors
 from typing import List, Tuple
 
 _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-_MODEL = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
 # Free tier limit: 15 requests/min. A 0.5s pause keeps us under ~30 req/min
 # on fast pages; for large documents we batch pages to stay well within limits.

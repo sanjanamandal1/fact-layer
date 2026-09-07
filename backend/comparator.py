@@ -25,7 +25,7 @@ from typing import List, Tuple
 from embedder import cosine_similarity, embedding_from_list
 
 _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-_MODEL = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
 # Minimum semantic similarity to consider two facts worth comparing.
 # Too low → noisy LLM calls; too high → miss paraphrases.

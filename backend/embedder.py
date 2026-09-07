@@ -1,38 +1,36 @@
 """
-Embeddings via Gemini text-embedding-004 (google-genai SDK).
+Local embeddings using scikit-learn's HashingVectorizer.
 
-We use Gemini's free embedding model rather than sentence-transformers,
-which requires PyTorch >= 2.4. This keeps the dependency footprint light
-and works on any Python environment without a GPU.
+Why not Gemini embeddings?
+- text-embedding-004 is unavailable on the AI Studio free tier.
+- A local vectorizer has zero latency, zero API cost, and no rate limits.
+- For finding *candidate pairs* (the only job of embeddings here),
+  word-overlap similarity is plenty good enough — the LLM does the
+  precise reasoning, not the embedder.
 
-text-embedding-004 returns 768-dim vectors. We normalize them so
-cosine similarity reduces to a dot product.
+HashingVectorizer uses the hashing trick to produce a fixed-size
+sparse vector from text without needing to fit on a corpus first.
+We convert to dense and L2-normalize so cosine similarity == dot product.
 """
 
-import os
 import numpy as np
-from google import genai
-from google.genai import types
+from sklearn.feature_extraction.text import HashingVectorizer
 
-# text-embedding-004 requires v1 (not the SDK default v1beta)
-_client = genai.Client(
-    api_key=os.environ["GEMINI_API_KEY"],
-    http_options={"api_version": "v1"},
+_vectorizer = HashingVectorizer(
+    n_features=512,
+    norm="l2",
+    alternate_sign=False,
+    analyzer="word",
+    ngram_range=(1, 2),  # unigrams + bigrams for better semantic coverage
 )
-_EMBED_MODEL = "text-embedding-004"
 
 
 def embed(text: str) -> np.ndarray:
-    """Return a normalized embedding vector for a piece of text."""
-    result = _client.models.embed_content(
-        model=_EMBED_MODEL,
-        contents=text,
-        config=types.EmbedContentConfig(task_type="SEMANTIC_SIMILARITY"),
-    )
-    vec = np.array(result.embeddings[0].values, dtype=np.float32)
-    # L2-normalize so cosine similarity == dot product
-    norm = np.linalg.norm(vec)
-    return vec / norm if norm > 0 else vec
+    """Return a normalized 512-dim vector for a piece of text."""
+    sparse = _vectorizer.transform([text])
+    dense = sparse.toarray()[0].astype(np.float32)
+    norm = np.linalg.norm(dense)
+    return dense / norm if norm > 0 else dense
 
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:

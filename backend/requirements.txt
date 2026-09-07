@@ -2,5 +2,6 @@ fastapi
 uvicorn[standard]
 pdfplumber
 google-genai
+scikit-learn
 numpy
 python-multipart

@@ -14,7 +14,11 @@ import numpy as np
 from google import genai
 from google.genai import types
 
-_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+# text-embedding-004 requires v1 (not the SDK default v1beta)
+_client = genai.Client(
+    api_key=os.environ["GEMINI_API_KEY"],
+    http_options={"api_version": "v1"},
+)
 _EMBED_MODEL = "text-embedding-004"
 
 

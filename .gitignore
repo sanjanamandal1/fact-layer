@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Uploaded files and local database (runtime artifacts)
+backend/uploads/
+backend/facts.db
+backend/facts.db-shm
+backend/facts.db-wal
+
+# Secrets
+.env
+*.env
+
+# Node (if frontend ever uses npm)
+node_modules/

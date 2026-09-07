@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fact Knowledge Layer</title>
+  <meta name="description" content="Upload PDFs, extract facts, and discover corroborations and contradictions across documents." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="header-inner">
+        <div class="logo">
+          <span class="logo-icon">◈</span>
+          <span class="logo-text">FactLayer</span>
+          <span class="logo-badge">beta</span>
+        </div>
+        <nav class="tabs" role="tablist">
+          <button class="tab active" data-tab="upload" role="tab" aria-selected="true" id="tab-upload">Upload</button>
+          <button class="tab" data-tab="facts" role="tab" aria-selected="false" id="tab-facts">
+            Facts <span class="tab-count" id="facts-count">0</span>
+          </button>
+          <button class="tab" data-tab="relationships" role="tab" aria-selected="false" id="tab-relationships">
+            Relationships <span class="tab-count" id="rels-count">0</span>
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <!-- Upload Tab -->
+    <main class="panel" id="panel-upload">
+      <div class="panel-inner">
+
+        <div class="section-header">
+          <h1 class="section-title">Document Intelligence</h1>
+          <p class="section-sub">Upload PDFs to extract facts and discover cross-document relationships</p>
+        </div>
+
+        <!-- Upload Zone -->
+        <div class="upload-zone" id="upload-zone">
+          <input type="file" id="file-input" accept=".pdf" multiple hidden />
+          <div class="upload-icon">⬆</div>
+          <p class="upload-label">Drop PDFs here or <button class="link-btn" id="browse-btn">browse</button></p>
+          <p class="upload-hint">Facts are extracted and compared incrementally — no rebuild needed</p>
+        </div>
+
+        <!-- Processing State -->
+        <div class="processing-card hidden" id="processing-card">
+          <div class="spinner"></div>
+          <div class="processing-text">
+            <p class="processing-title" id="processing-title">Processing…</p>
+            <p class="processing-sub" id="processing-sub">Extracting facts and running comparisons</p>
+          </div>
+        </div>
+
+        <!-- Result Flash -->
+        <div class="result-card hidden" id="result-card"></div>
+
+        <!-- Documents List -->
+        <div id="documents-section">
+          <h2 class="list-heading">Uploaded Documents</h2>
+          <div id="documents-list" class="documents-list">
+            <p class="empty-state" id="docs-empty">No documents yet. Upload your first PDF above.</p>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- Facts Tab -->
+    <main class="panel hidden" id="panel-facts">
+      <div class="panel-inner">
+        <div class="section-header">
+          <h2 class="section-title">Extracted Facts</h2>
+          <div class="filter-row">
+            <select id="facts-doc-filter" class="select">
+              <option value="">All documents</option>
+            </select>
+            <select id="facts-type-filter" class="select">
+              <option value="">All types</option>
+              <option value="numerical">Numerical</option>
+              <option value="entity">Entity</option>
+              <option value="state">State</option>
+              <option value="date">Date</option>
+            </select>
+            <select id="facts-conf-filter" class="select">
+              <option value="">Any confidence</option>
+              <option value="high">High (&gt;80%)</option>
+              <option value="medium">Medium (50–80%)</option>
+              <option value="low">Low (&lt;50%)</option>
+            </select>
+          </div>
+        </div>
+        <div id="facts-list" class="facts-grid">
+          <p class="empty-state">Upload documents to see extracted facts here.</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- Relationships Tab -->
+    <main class="panel hidden" id="panel-relationships">
+      <div class="panel-inner">
+        <div class="section-header">
+          <h2 class="section-title">Cross-Document Relationships</h2>
+          <div class="filter-row">
+            <button class="filter-chip active" data-rel="all">All</button>
+            <button class="filter-chip" data-rel="CORROBORATED">✓ Corroborated</button>
+            <button class="filter-chip" data-rel="CONTRADICTED">✗ Contradicted</button>
+            <button class="filter-chip" data-rel="RECONCILED">⟳ Reconciled</button>
+          </div>
+        </div>
+        <div id="relationships-list" class="relationships-list">
+          <p class="empty-state">Upload at least two documents to discover relationships.</p>
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

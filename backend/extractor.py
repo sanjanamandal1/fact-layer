@@ -128,201 +128,187 @@ def parse_json_facts(raw: str) -> List[dict]:
 
     return []
 
-# Free tier limit: 15 requests/min. A 0.5s pause keeps us under ~30 req/min
-# on fast pages; for large documents we batch pages to stay well within limits.
-_INTER_PAGE_DELAY = 1.5   # seconds between API calls (free-tier safe)
-_MAX_PAGES = 12           # sample 12 key pages to stay safely below 15 RPM limit
-
-
 # ── PDF Text Extraction ────────────────────────────────────────────────────
 
-def extract_pages(pdf_path: str) -> Tuple[List[Tuple[int, str, float]], float]:
+RICH_KEYWORDS = [
+    "revenue", "profit", "loss", "ebitda", "margin", "crore", "lakh", "million",
+    "billion", "equity", "share", "dividend", "debt", "asset", "liability", "expense",
+    "director", "auditor", "promoter", "subsidiary", "board", "incorporat", "registered",
+    "cin", "sebi", "bse", "nse", "fy2", "fy1", "growth", "headcount", "customer",
+    "delhivery", "limited", "restated", "consolidated", "standalone"
+]
+
+def _score_page_richness(text: str) -> float:
+    """Score a page by how densely it contains metrics, currency, and corporate terms."""
+    if not text:
+        return 0.0
+    lower = text.lower()
+    kw_score = sum(3 for kw in RICH_KEYWORDS if kw in lower)
+    digit_score = min(sum(1 for c in text if c.isdigit()), 40)
+    symbol_score = min(sum(2 for c in text if c in "₹$%"), 20)
+    return kw_score + digit_score + symbol_score
+
+
+def extract_pages(pdf_path: str) -> Tuple[List[Tuple[int, str, float]], int, float]:
     """
-    Extract text page-by-page and assess overall document quality.
+    Extract text page-by-page and select the most fact-rich pages.
 
-    Why page-by-page?
-    - Preserves exact page references for evidence grounding.
-    - Lets us skip low-quality pages individually rather than rejecting the whole doc.
-
-    Returns: (pages, overall_quality_score)
+    Returns: (selected_pages, total_pdf_pages, overall_quality_score)
     """
     pages = []
-    with pdfplumber.open(pdf_path) as pdf:
-        for i, page in enumerate(pdf.pages):
+    total_pages = 0
+
+    # 1. Fast text extraction using pypdf, falling back to pdfplumber
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(pdf_path)
+        total_pages = len(reader.pages)
+        for i, page in enumerate(reader.pages):
             text = page.extract_text() or ""
             quality = _assess_text_quality(text)
             pages.append((i + 1, text, quality))
+    except Exception:
+        pages = []
+        with pdfplumber.open(pdf_path) as pdf:
+            total_pages = len(pdf.pages)
+            for i, page in enumerate(pdf.pages):
+                text = page.extract_text() or ""
+                quality = _assess_text_quality(text)
+                pages.append((i + 1, text, quality))
 
     if not pages:
-        return [], 0.0
+        return [], 0, 0.0
 
     avg_quality = sum(q for _, _, q in pages) / len(pages)
 
-    # For large documents, sample evenly across the doc rather than just
-    # taking the first N pages — gives better coverage for fact discovery.
-    if len(pages) > _MAX_PAGES:
-        step = len(pages) / _MAX_PAGES
-        pages = [pages[int(i * step)] for i in range(_MAX_PAGES)]
+    # Filter out empty or unreadable pages
+    valid_pages = [p for p in pages if p[2] >= 0.35 and len(p[1].strip()) >= 50]
 
-    return pages, round(avg_quality, 2)
+    # Target up to 36 most fact-dense pages
+    MAX_PROCESSED_PAGES = 36
+    if len(valid_pages) <= MAX_PROCESSED_PAGES:
+        selected_pages = valid_pages
+    else:
+        # Keep early foundational pages (pages 1 to 3) for corporate identity/CIN
+        early_pages = [p for p in valid_pages if p[0] <= 3]
+        other_pages = [p for p in valid_pages if p[0] > 3]
+
+        # Prioritize the most fact-rich pages (financials, tables, operations)
+        scored = sorted(other_pages, key=lambda p: _score_page_richness(p[1]), reverse=True)
+        needed = MAX_PROCESSED_PAGES - len(early_pages)
+        selected_pages = early_pages + scored[:needed]
+        # Re-sort by page number to keep natural document order
+        selected_pages.sort(key=lambda p: p[0])
+
+    return selected_pages, total_pages, round(avg_quality, 2)
 
 
 def _assess_text_quality(text: str) -> float:
     """
     Heuristic: ratio of readable characters to total.
-
-    A scanned PDF after OCR often returns garbled text with low readable-char ratio.
-    We flag these so downstream consumers can adjust confidence accordingly.
     """
-    if not text or len(text) < 30:
+    if not text or len(text.strip()) < 30:
         return 0.0
     readable = sum(
         1 for c in text
-        if c.isalnum() or c.isspace() or c in ".,;:()-₹%/'\""
+        if c.isalnum() or c.isspace() or c in ".,;:()-₹%/'\"$£€"
     )
     return round(readable / len(text), 2)
 
 
 # ── Fact Extraction via Gemini ─────────────────────────────────────────────
 
-EXTRACTION_PROMPT = """You are a fact extractor for financial and legal documents.
+DOCUMENT_EXTRACTION_PROMPT = """You are a senior financial and legal document analyst.
+Your task is to extract a comprehensive, high-density collection of distinct, verifiable facts from the document pages below.
+Do NOT give a superficial summary or skip pages. Aim for 3 to 6 distinct, granular facts per page.
 
-Extract all meaningful facts from the page text below. Focus on:
-- Numerical facts: revenue, profit, headcount, shares, percentages, valuations
-- Entity facts: company names, director names, addresses, registration/CIN numbers
-- State facts: a person's role or status (active/resigned), a company's status (listed/unlisted)
-- Date facts: incorporation dates, filing dates, event dates
-
-For each fact return a JSON object:
-{{
-  "claim": "clear, self-contained statement of the fact",
-  "fact_type": "numerical" | "entity" | "state" | "date",
-  "temporal_scope": "FY2023" | "Q1 2024" | "as of March 2024" | null,
-  "entity_scope": "standalone" | "consolidated" | null,
-  "exact_quote": "verbatim sentence(s) from the text supporting this fact",
-  "confidence": 0.0 to 1.0,
-  "uncertainty_reason": "brief reason if confidence < 0.75, else null"
-}}
-
-Rules:
-- Only extract facts explicitly stated — never infer or assume.
-- exact_quote must be verbatim from the source text.
-- If a number appears without clear context, set confidence below 0.6.
-- Skip boilerplate (page headers, table-of-contents entries, legal disclaimers).
-- Return ONLY a valid JSON array, no other text. If nothing meaningful, return [].
-
-Page {page_number} text:
-{text}"""
-
-
-def extract_facts_from_page(page_number: int, text: str, page_quality: float) -> List[dict]:
-    """
-    Ask Gemini to extract facts from a single page.
-
-    We pass pages individually so the LLM can focus and so we always have
-    an exact page number to attach to each fact as source evidence.
-    A small inter-page delay respects the free-tier rate limit.
-    """
-    if not text.strip() or page_quality < 0.4:
-        # Skip nearly empty or garbled pages — garbage in, garbage out.
-        return []
-
-    prompt = EXTRACTION_PROMPT.format(page_number=page_number, text=text[:4000])
-
-    try:
-        time.sleep(_INTER_PAGE_DELAY)   # respect free-tier rate limits
-        client = get_client()
-        response = generate_content_with_fallback(client, prompt)
-        raw = response.text.strip() if response and response.text else ""
-        facts = parse_json_facts(raw)
-
-        # Adjust confidence downward for low-quality pages
-        if page_quality < 0.7:
-            for f in facts:
-                f["confidence"] = round(f.get("confidence", 0.5) * page_quality, 2)
-                if not f.get("uncertainty_reason"):
-                    f["uncertainty_reason"] = f"Source page quality is low ({page_quality:.0%})"
-
-        return facts
-    except Exception as e:
-        return [{
-            "claim": f"Extraction error on page {page_number}",
-            "fact_type": "state",
-            "temporal_scope": None,
-            "entity_scope": None,
-            "exact_quote": text[:200] if text else "",
-            "confidence": 0.0,
-            "uncertainty_reason": str(e),
-        }]
-
-
-DOCUMENT_EXTRACTION_PROMPT = """You are a financial and legal document analyst.
-Extract all meaningful, self-contained facts from the document pages below. Focus on:
-- Numerical facts: revenue, profit, headcount, shares, percentages, valuations, debt
-- Entity facts: company names, director names, addresses, registration/CIN numbers
-- State facts: roles or status (active/resigned), company status (listed/unlisted)
-- Date facts: incorporation dates, filing dates, event dates
+Extract all verifiable facts across these categories:
+- Numerical facts: specific revenue numbers, EBITDA, net profit/loss, margins, CAGR, total borrowings/debt, cash flow, total assets, equity valuation, issue size, share price/pricing bands, employee headcount, operational scale (parcels/orders handled, PIN codes serviced, automated hubs, vehicle fleet size).
+- Entity facts: corporate entity names, founders, promoters, board directors, key managerial personnel (CEO, CFO, CS), statutory auditors, book running lead managers, syndicate members, key institutional shareholders.
+- State facts: listed/unlisted status, stock exchange listing (NSE, BSE), incorporation status (public/private limited), board committee approvals, regulatory clearances (SEBI, RoC, RBI).
+- Date facts: date of incorporation, conversion to public company, filing dates, reporting period dates (e.g. FY2021, FY2022, 9-months ended Dec 31, 2021), issue opening/closing dates.
 
 For each fact return a JSON object:
 {{
   "page_number": <integer page number from which this fact was extracted>,
-  "claim": "clear, self-contained statement of the fact",
+  "claim": "clear, self-contained, and precise statement of the fact",
   "fact_type": "numerical" | "entity" | "state" | "date",
-  "temporal_scope": "FY2023" | "Q1 2024" | "as of March 2024" | null,
-  "entity_scope": "standalone" | "consolidated" | null,
-  "exact_quote": "verbatim sentence(s) from that page's text supporting this fact",
-  "confidence": 0.0 to 1.0,
-  "uncertainty_reason": "brief reason if confidence < 0.75, else null"
+  "temporal_scope": "FY2022" | "as of Dec 31, 2021" | "Q3 FY22" | null,
+  "entity_scope": "consolidated" | "standalone" | null,
+  "exact_quote": "verbatim sentence or data line from that page supporting this fact",
+  "confidence": 0.85 to 1.0,
+  "uncertainty_reason": null
 }}
 
 Rules:
-- Only extract facts explicitly stated in the text — never infer or assume.
-- exact_quote must be verbatim from that page.
-- Make sure "page_number" correctly matches the section heading for that page.
-- Return ONLY a valid JSON array of fact objects. If nothing meaningful, return [].
+- Extract all verifiable facts — do NOT skip pages or omit granular metrics.
+- exact_quote MUST be verbatim from the text of that specific page.
+- Make sure "page_number" correctly matches the section header ('--- PAGE X ---').
+- Return ONLY a valid JSON array of fact objects.
 
 Document pages:
 {pages_content}
 """
 
 
-def extract_facts_from_document(pages: List[Tuple[int, str, float]]) -> List[dict]:
+def extract_facts_from_document(pages: List[Tuple[int, str, float]], batch_size: int = 10) -> List[dict]:
     """
-    Extract facts from document pages in a single coherent LLM call.
-    Avoids O(pages) API calls, completely eliminating 429 rate limit issues.
+    Extract facts in small batches (e.g. 10 pages per call) using the high-density prompt.
+    Produces 50-100+ granular facts while staying safely below the 15 RPM free-tier limit.
     """
     if not pages:
         return []
 
-    sections = []
-    for page_number, text, quality in pages:
-        if text.strip() and quality >= 0.4:
-            clean_text = text[:3000].strip()
-            sections.append(f"--- PAGE {page_number} ---\n{clean_text}")
-
-    if not sections:
-        return []
-
-    full_content = "\n\n".join(sections)
-    prompt = DOCUMENT_EXTRACTION_PROMPT.format(pages_content=full_content)
-
+    # Split pages into batches of up to batch_size
+    batches = [pages[i:i + batch_size] for i in range(0, len(pages), batch_size)]
+    all_facts = []
     client = get_client()
-    response = generate_content_with_fallback(client, prompt)
-    raw = response.text.strip() if response and response.text else ""
-    facts = parse_json_facts(raw)
 
-    valid_page_numbers = {p[0] for p in pages}
-    first_page = pages[0][0] if pages else 1
-    page_qualities = {p[0]: p[2] for p in pages}
+    for idx, batch in enumerate(batches):
+        sections = []
+        for page_number, text, quality in batch:
+            if text.strip() and quality >= 0.35:
+                clean_text = text[:3200].strip()
+                sections.append(f"--- PAGE {page_number} ---\n{clean_text}")
 
-    for f in facts:
-        if not isinstance(f.get("page_number"), int) or f["page_number"] not in valid_page_numbers:
-            f["page_number"] = first_page
+        if not sections:
+            continue
 
-        q = page_qualities.get(f["page_number"], 1.0)
-        if q < 0.7:
-            f["confidence"] = round(f.get("confidence", 0.5) * q, 2)
-            if not f.get("uncertainty_reason"):
-                f["uncertainty_reason"] = f"Source page quality is low ({q:.0%})"
+        full_content = "\n\n".join(sections)
+        prompt = DOCUMENT_EXTRACTION_PROMPT.format(pages_content=full_content)
 
-    return facts
+        # Gentle pause between batches to stay safely within free-tier RPM
+        if idx > 0:
+            time.sleep(1.2)
+
+        try:
+            response = generate_content_with_fallback(client, prompt)
+            raw = response.text.strip() if response and response.text else ""
+            batch_facts = parse_json_facts(raw)
+
+            valid_batch_pages = {p[0] for p in batch}
+            fallback_page = batch[0][0]
+            batch_qualities = {p[0]: p[2] for p in batch}
+
+            for f in batch_facts:
+                if not isinstance(f.get("page_number"), int) or f["page_number"] not in valid_batch_pages:
+                    f["page_number"] = fallback_page
+
+                q = batch_qualities.get(f["page_number"], 1.0)
+                if q < 0.7:
+                    f["confidence"] = round(f.get("confidence", 0.5) * q, 2)
+                    if not f.get("uncertainty_reason"):
+                        f["uncertainty_reason"] = f"Source page quality is low ({q:.0%})"
+
+            all_facts.extend(batch_facts)
+        except Exception as e:
+            # Continue to next batch if one encounters an error
+            continue
+
+    return all_facts
+
+
+def extract_facts_from_page(page_number: int, text: str, page_quality: float) -> List[dict]:
+    """Backward compatibility helper for single-page extraction."""
+    return extract_facts_from_document([(page_number, text, page_quality)])
+

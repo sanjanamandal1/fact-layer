@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 import db
-from extractor import extract_pages, extract_facts_from_page, extract_facts_from_document
+from extractor import extract_pages, extract_facts_from_document
 from embedder import embed, embedding_to_list
 from comparator import find_candidate_pairs, compare_facts
 
@@ -72,7 +72,7 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     # Extract text
     try:
-        pages, quality_score = extract_pages(str(save_path))
+        pages, total_pages, quality_score = extract_pages(str(save_path))
     except Exception as e:
         if save_path.exists():
             save_path.unlink(missing_ok=True)
@@ -83,7 +83,7 @@ async def upload_pdf(file: UploadFile = File(...)):
             save_path.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail="Could not extract any readable text from this PDF.")
 
-    db.insert_document(doc_id, file.filename, len(pages), quality_score)
+    db.insert_document(doc_id, file.filename, total_pages, quality_score)
 
     # Extract + embed facts (single-call whole-document extraction)
     new_facts = []
@@ -157,7 +157,8 @@ async def upload_pdf(file: UploadFile = File(...)):
     return {
         "document_id": doc_id,
         "filename": file.filename,
-        "pages_processed": len(pages),
+        "pages_processed": total_pages,
+        "pages_analyzed": len(pages),
         "quality_score": quality_score,
         "facts_extracted": len(new_facts),
         "relationships_found": relationships_created,

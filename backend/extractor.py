@@ -21,11 +21,39 @@ def get_client():
         _client = genai.Client(api_key=api_key)
     return _client
 
-def get_model():
-    model = os.environ.get("GEMINI_MODEL")
-    if not model or "1.5" in model or "2.0" in model:
-        return "gemini-2.5-flash"
-    return model
+_ACTIVE_MODEL = None
+CANDIDATE_MODELS = [
+    "gemini-flash-latest",
+    "gemini-3.5-flash",
+    "gemini-3.8-flash",
+    "gemini-2.5-flash",
+]
+
+def generate_content_with_fallback(client, contents):
+    global _ACTIVE_MODEL
+    env_model = os.environ.get("GEMINI_MODEL")
+    models_to_try = []
+    if _ACTIVE_MODEL:
+        models_to_try.append(_ACTIVE_MODEL)
+    if env_model and env_model not in models_to_try and "1.5" not in env_model and "2.0" not in env_model:
+        models_to_try.append(env_model)
+    for m in CANDIDATE_MODELS:
+        if m not in models_to_try:
+            models_to_try.append(m)
+
+    last_error = None
+    for model_name in models_to_try:
+        try:
+            response = client.models.generate_content(model=model_name, contents=contents)
+            _ACTIVE_MODEL = model_name
+            return response
+        except genai_errors.ClientError as e:
+            if "404" in str(e) or "not available" in str(e).lower() or "not found" in str(e).lower():
+                last_error = e
+                continue
+            raise e
+    if last_error:
+        raise last_error
 
 # Free tier limit: 15 requests/min. A 0.5s pause keeps us under ~30 req/min
 # on fast pages; for large documents we batch pages to stay well within limits.
@@ -131,7 +159,7 @@ def extract_facts_from_page(page_number: int, text: str, page_quality: float) ->
     try:
         time.sleep(_INTER_PAGE_DELAY)   # respect free-tier rate limits
         client = get_client()
-        response = client.models.generate_content(model=get_model(), contents=prompt)
+        response = generate_content_with_fallback(client, prompt)
         raw = response.text.strip()
 
         # Try stripping code fences first

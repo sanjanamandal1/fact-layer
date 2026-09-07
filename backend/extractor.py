@@ -99,9 +99,14 @@ def extract_facts_from_page(page_number: int, text: str, page_quality: float) ->
         response = _client.models.generate_content(model=_MODEL, contents=prompt)
         raw = response.text.strip()
 
-        # Strip markdown code fences if Gemini wraps output
+        # Try stripping code fences first
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
         raw = re.sub(r"\s*```$", "", raw)
+
+        # Gemini sometimes wraps output in prose — find the JSON array directly
+        json_match = re.search(r"\[.*\]", raw, re.DOTALL)
+        if json_match:
+            raw = json_match.group(0)
 
         facts = json.loads(raw)
         if not isinstance(facts, list):

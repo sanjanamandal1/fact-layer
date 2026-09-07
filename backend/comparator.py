@@ -18,8 +18,8 @@ Why conservative defaults?
 import os
 import json
 import re
-import numpy as np
 from google import genai
+from google.genai import types, errors as genai_errors
 from typing import List, Tuple
 
 from embedder import cosine_similarity, embedding_from_list
@@ -59,9 +59,10 @@ def generate_content_with_fallback(client, contents):
             models_to_try.append(m)
 
     last_error = None
+    config = types.GenerateContentConfig(response_mime_type="application/json")
     for model_name in models_to_try:
         try:
-            response = client.models.generate_content(model=model_name, contents=contents)
+            response = client.models.generate_content(model=model_name, contents=contents, config=config)
             _ACTIVE_MODEL = model_name
             return response
         except genai_errors.ClientError as e:

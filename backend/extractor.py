@@ -4,7 +4,7 @@ import re
 import time
 import pdfplumber
 from google import genai
-from google.genai import errors as genai_errors
+from google.genai import types, errors as genai_errors
 from typing import List, Tuple
 
 from dotenv import load_dotenv
@@ -42,9 +42,10 @@ def generate_content_with_fallback(client, contents):
             models_to_try.append(m)
 
     last_error = None
+    config = types.GenerateContentConfig(response_mime_type="application/json")
     for model_name in models_to_try:
         try:
-            response = client.models.generate_content(model=model_name, contents=contents)
+            response = client.models.generate_content(model=model_name, contents=contents, config=config)
             _ACTIVE_MODEL = model_name
             return response
         except genai_errors.ClientError as e:
@@ -54,6 +55,67 @@ def generate_content_with_fallback(client, contents):
             raise e
     if last_error:
         raise last_error
+
+def parse_json_facts(raw: str) -> List[dict]:
+    raw = (raw or "").strip()
+    if not raw:
+        return []
+
+    # 1. Direct JSON parse
+    try:
+        data = json.loads(raw)
+        if isinstance(data, list):
+            return [x for x in data if isinstance(x, dict) and "claim" in x]
+        if isinstance(data, dict):
+            for k in ["facts", "claims", "items"]:
+                if isinstance(data.get(k), list):
+                    return [x for x in data[k] if isinstance(x, dict) and "claim" in x]
+    except Exception:
+        pass
+
+    # 2. Strip code fences
+    cleaned = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+    try:
+        data = json.loads(cleaned)
+        if isinstance(data, list):
+            return [x for x in data if isinstance(x, dict) and "claim" in x]
+    except Exception:
+        pass
+
+    # 3. Balanced bracket extractor for [ ... ]
+    start = raw.find("[")
+    if start != -1:
+        depth = 0
+        in_string = False
+        escape = False
+        for i in range(start, len(raw)):
+            c = raw[i]
+            if escape:
+                escape = False
+                continue
+            if c == '\\':
+                escape = True
+                continue
+            if c == '"':
+                in_string = not in_string
+                continue
+            if not in_string:
+                if c == '[':
+                    depth += 1
+                elif c == ']':
+                    depth -= 1
+                    if depth == 0:
+                        candidate = raw[start:i+1]
+                        try:
+                            data = json.loads(candidate)
+                            if isinstance(data, list):
+                                return [x for x in data if isinstance(x, dict) and "claim" in x]
+                        except Exception:
+                            pass
+                        break
+
+    return []
 
 # Free tier limit: 15 requests/min. A 0.5s pause keeps us under ~30 req/min
 # on fast pages; for large documents we batch pages to stay well within limits.
@@ -160,20 +222,7 @@ def extract_facts_from_page(page_number: int, text: str, page_quality: float) ->
         time.sleep(_INTER_PAGE_DELAY)   # respect free-tier rate limits
         client = get_client()
         response = generate_content_with_fallback(client, prompt)
-        raw = response.text.strip()
-
-        # Try stripping code fences first
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
-
-        # Gemini sometimes wraps output in prose — find the JSON array directly
-        json_match = re.search(r"\[.*\]", raw, re.DOTALL)
-        if json_match:
-            raw = json_match.group(0)
-
-        facts = json.loads(raw)
-        if not isinstance(facts, list):
-            return []
+        facts = parse_json_facts(raw)
 
         # Adjust confidence downward for low-quality pages
         if page_quality < 0.7:

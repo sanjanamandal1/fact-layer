@@ -1,12 +1,20 @@
 import os
 import json
 import re
+import time
 import pdfplumber
 from google import genai
+from google.genai import errors as genai_errors
 from typing import List, Tuple
 
 _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 _MODEL = "gemini-2.0-flash"
+
+# Free tier limit: 15 requests/min. A 0.5s pause keeps us under ~30 req/min
+# on fast pages; for large documents we batch pages to stay well within limits.
+_INTER_PAGE_DELAY = 1.0   # seconds between API calls
+_MAX_PAGES = 40           # cap per upload — beyond this, batch pages together
+
 
 # ── PDF Text Extraction ────────────────────────────────────────────────────
 
@@ -31,6 +39,13 @@ def extract_pages(pdf_path: str) -> Tuple[List[Tuple[int, str, float]], float]:
         return [], 0.0
 
     avg_quality = sum(q for _, _, q in pages) / len(pages)
+
+    # For large documents, sample evenly across the doc rather than just
+    # taking the first N pages — gives better coverage for fact discovery.
+    if len(pages) > _MAX_PAGES:
+        step = len(pages) / _MAX_PAGES
+        pages = [pages[int(i * step)] for i in range(_MAX_PAGES)]
+
     return pages, round(avg_quality, 2)
 
 
@@ -76,7 +91,7 @@ Rules:
 - exact_quote must be verbatim from the source text.
 - If a number appears without clear context, set confidence below 0.6.
 - Skip boilerplate (page headers, table-of-contents entries, legal disclaimers).
-- Return a JSON array. If nothing meaningful, return [].
+- Return ONLY a valid JSON array, no other text. If nothing meaningful, return [].
 
 Page {page_number} text:
 {text}"""
@@ -88,6 +103,7 @@ def extract_facts_from_page(page_number: int, text: str, page_quality: float) ->
 
     We pass pages individually so the LLM can focus and so we always have
     an exact page number to attach to each fact as source evidence.
+    A small inter-page delay respects the free-tier rate limit.
     """
     if not text.strip() or page_quality < 0.4:
         # Skip nearly empty or garbled pages — garbage in, garbage out.
@@ -96,6 +112,7 @@ def extract_facts_from_page(page_number: int, text: str, page_quality: float) ->
     prompt = EXTRACTION_PROMPT.format(page_number=page_number, text=text[:4000])
 
     try:
+        time.sleep(_INTER_PAGE_DELAY)   # respect free-tier rate limits
         response = _client.models.generate_content(model=_MODEL, contents=prompt)
         raw = response.text.strip()
 
@@ -120,6 +137,18 @@ def extract_facts_from_page(page_number: int, text: str, page_quality: float) ->
                     f["uncertainty_reason"] = f"Source page quality is low ({page_quality:.0%})"
 
         return facts
+
+    except genai_errors.ClientError as e:
+        # API-level error (rate limit, auth, etc.) — surface clearly
+        return [{
+            "claim": f"API error on page {page_number}",
+            "fact_type": "state",
+            "temporal_scope": None,
+            "entity_scope": None,
+            "exact_quote": text[:200] if text else "",
+            "confidence": 0.0,
+            "uncertainty_reason": f"Gemini API error: {str(e)[:120]}",
+        }]
 
     except (json.JSONDecodeError, Exception):
         # Extraction failed — we surface this as an explicit failure case

@@ -23,9 +23,22 @@ from google import genai
 from typing import List, Tuple
 
 from embedder import cosine_similarity, embedding_from_list
+from dotenv import load_dotenv
+load_dotenv()
 
-_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+_client = None
+
+def get_client():
+    global _client
+    if _client is None:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY environment variable is not set.")
+        _client = genai.Client(api_key=api_key)
+    return _client
+
+def get_model():
+    return os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
 # Minimum semantic similarity to consider two facts worth comparing.
 # Too low → noisy LLM calls; too high → miss paraphrases.
@@ -110,7 +123,8 @@ def compare_facts(fact_a: dict, fact_b: dict, doc_a_name: str, doc_b_name: str) 
     )
 
     try:
-        response = _client.models.generate_content(model=_MODEL, contents=prompt)
+        client = get_client()
+        response = client.models.generate_content(model=get_model(), contents=prompt)
         raw = response.text.strip()
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
         raw = re.sub(r"\s*```$", "", raw)

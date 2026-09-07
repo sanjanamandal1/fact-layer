@@ -113,6 +113,7 @@ function renderDocuments() {
   const empty     = document.getElementById("docs-empty");
 
   if (!allDocuments.length) {
+    if (container) container.innerHTML = "";
     empty && empty.classList.remove("hidden");
     return;
   }

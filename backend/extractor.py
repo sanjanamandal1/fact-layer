@@ -7,8 +7,22 @@ from google import genai
 from google.genai import errors as genai_errors
 from typing import List, Tuple
 
-_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+from dotenv import load_dotenv
+load_dotenv()
+
+_client = None
+
+def get_client():
+    global _client
+    if _client is None:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY environment variable is not set.")
+        _client = genai.Client(api_key=api_key)
+    return _client
+
+def get_model():
+    return os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
 # Free tier limit: 15 requests/min. A 0.5s pause keeps us under ~30 req/min
 # on fast pages; for large documents we batch pages to stay well within limits.
@@ -113,7 +127,8 @@ def extract_facts_from_page(page_number: int, text: str, page_quality: float) ->
 
     try:
         time.sleep(_INTER_PAGE_DELAY)   # respect free-tier rate limits
-        response = _client.models.generate_content(model=_MODEL, contents=prompt)
+        client = get_client()
+        response = client.models.generate_content(model=get_model(), contents=prompt)
         raw = response.text.strip()
 
         # Try stripping code fences first

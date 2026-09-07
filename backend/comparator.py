@@ -161,6 +161,12 @@ def compare_facts(fact_a: dict, fact_b: dict, doc_a_name: str, doc_b_name: str) 
         raw = response.text.strip()
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
         raw = re.sub(r"\s*```$", "", raw)
+
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            raw = raw[start:end+1]
+
         result = json.loads(raw)
 
         return {

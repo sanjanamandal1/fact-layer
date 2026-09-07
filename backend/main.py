@@ -71,34 +71,53 @@ async def upload_pdf(file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, f)
 
     # Extract text
-    pages, quality_score = extract_pages(str(save_path))
+    try:
+        pages, quality_score = extract_pages(str(save_path))
+    except Exception as e:
+        if save_path.exists():
+            save_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=422, detail=f"Could not read PDF: {str(e)}")
+
     if not pages:
-        raise HTTPException(status_code=422, detail="Could not extract any text from this PDF.")
+        if save_path.exists():
+            save_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=422, detail="Could not extract any readable text from this PDF.")
 
     db.insert_document(doc_id, file.filename, len(pages), quality_score)
 
     # Extract + embed facts
     new_facts = []
-    for page_number, text, page_quality in pages:
-        raw_facts = extract_facts_from_page(page_number, text, page_quality)
-        for rf in raw_facts:
-            fact_id = str(uuid.uuid4())
-            embedding = embed(rf["claim"])
-            fact = {
-                "id": fact_id,
-                "document_id": doc_id,
-                "claim": rf["claim"],
-                "fact_type": rf.get("fact_type", "entity"),
-                "temporal_scope": rf.get("temporal_scope"),
-                "entity_scope": rf.get("entity_scope"),
-                "exact_quote": rf["exact_quote"],
-                "page_number": page_number,
-                "confidence": rf.get("confidence", 0.5),
-                "uncertainty_reason": rf.get("uncertainty_reason"),
-                "embedding": json.dumps(embedding_to_list(embedding)),
-            }
-            db.insert_fact(fact)
-            new_facts.append(fact)
+    try:
+        for page_number, text, page_quality in pages:
+            raw_facts = extract_facts_from_page(page_number, text, page_quality)
+            for rf in raw_facts:
+                fact_id = str(uuid.uuid4())
+                embedding = embed(rf["claim"])
+                fact = {
+                    "id": fact_id,
+                    "document_id": doc_id,
+                    "claim": rf["claim"],
+                    "fact_type": rf.get("fact_type", "entity"),
+                    "temporal_scope": rf.get("temporal_scope"),
+                    "entity_scope": rf.get("entity_scope"),
+                    "exact_quote": rf["exact_quote"],
+                    "page_number": page_number,
+                    "confidence": rf.get("confidence", 0.5),
+                    "uncertainty_reason": rf.get("uncertainty_reason"),
+                    "embedding": json.dumps(embedding_to_list(embedding)),
+                }
+                db.insert_fact(fact)
+                new_facts.append(fact)
+    except RuntimeError as e:
+        db.delete_document(doc_id)
+        if save_path.exists():
+            save_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        db.delete_document(doc_id)
+        if save_path.exists():
+            save_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=f"Error extracting facts: {str(e)}")
 
     db.update_document_fact_count(doc_id, len(new_facts))
 
@@ -171,8 +190,7 @@ def get_relationships():
 
 @app.delete("/documents")
 def delete_all_documents():
-    for doc in db.list_documents():
-        db.delete_document(doc["id"])
+    db.delete_all()
     if UPLOAD_DIR.exists():
         for f in UPLOAD_DIR.glob("*.pdf"):
             try:

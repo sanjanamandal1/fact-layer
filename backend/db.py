@@ -106,6 +106,14 @@ def delete_document(doc_id: str):
         conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
 
 
+def delete_all():
+    """Wipe all documents, facts, and relationships."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM relationships")
+        conn.execute("DELETE FROM facts")
+        conn.execute("DELETE FROM documents")
+
+
 # ── Facts ──────────────────────────────────────────────────────────────────
 
 def insert_fact(fact: dict):

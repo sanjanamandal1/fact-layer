@@ -38,7 +38,10 @@ def get_client():
     return _client
 
 def get_model():
-    return os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    model = os.environ.get("GEMINI_MODEL")
+    if not model or "1.5" in model or "2.0" in model:
+        return "gemini-2.5-flash"
+    return model
 
 # Minimum semantic similarity to consider two facts worth comparing.
 # Too low → noisy LLM calls; too high → miss paraphrases.

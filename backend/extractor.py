@@ -22,7 +22,10 @@ def get_client():
     return _client
 
 def get_model():
-    return os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    model = os.environ.get("GEMINI_MODEL")
+    if not model or "1.5" in model or "2.0" in model:
+        return "gemini-2.5-flash"
+    return model
 
 # Free tier limit: 15 requests/min. A 0.5s pause keeps us under ~30 req/min
 # on fast pages; for large documents we batch pages to stay well within limits.

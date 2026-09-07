@@ -66,6 +66,15 @@ def generate_content_with_fallback(client, contents):
             _ACTIVE_MODEL = model_name
             return response
         except genai_errors.ClientError as e:
+            if "429" in str(e) or "resource_exhausted" in str(e).lower() or "quota" in str(e).lower():
+                import time
+                time.sleep(5.0)
+                try:
+                    response = client.models.generate_content(model=model_name, contents=contents, config=config)
+                    _ACTIVE_MODEL = model_name
+                    return response
+                except Exception:
+                    pass
             if "404" in str(e) or "not available" in str(e).lower() or "not found" in str(e).lower():
                 last_error = e
                 continue

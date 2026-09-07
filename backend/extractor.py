@@ -49,6 +49,15 @@ def generate_content_with_fallback(client, contents):
             _ACTIVE_MODEL = model_name
             return response
         except genai_errors.ClientError as e:
+            if "429" in str(e) or "resource_exhausted" in str(e).lower() or "quota" in str(e).lower():
+                # Free-tier quota exceeded — pause 5 seconds and retry
+                time.sleep(5.0)
+                try:
+                    response = client.models.generate_content(model=model_name, contents=contents, config=config)
+                    _ACTIVE_MODEL = model_name
+                    return response
+                except Exception:
+                    pass
             if "404" in str(e) or "not available" in str(e).lower() or "not found" in str(e).lower():
                 last_error = e
                 continue
@@ -119,8 +128,8 @@ def parse_json_facts(raw: str) -> List[dict]:
 
 # Free tier limit: 15 requests/min. A 0.5s pause keeps us under ~30 req/min
 # on fast pages; for large documents we batch pages to stay well within limits.
-_INTER_PAGE_DELAY = 1.0   # seconds between API calls
-_MAX_PAGES = 40           # cap per upload — beyond this, batch pages together
+_INTER_PAGE_DELAY = 1.5   # seconds between API calls (free-tier safe)
+_MAX_PAGES = 12           # sample 12 key pages to stay safely below 15 RPM limit
 
 
 # ── PDF Text Extraction ────────────────────────────────────────────────────
@@ -222,6 +231,7 @@ def extract_facts_from_page(page_number: int, text: str, page_quality: float) ->
         time.sleep(_INTER_PAGE_DELAY)   # respect free-tier rate limits
         client = get_client()
         response = generate_content_with_fallback(client, prompt)
+        raw = response.text.strip() if response and response.text else ""
         facts = parse_json_facts(raw)
 
         # Adjust confidence downward for low-quality pages

@@ -1,6 +1,6 @@
 /* ─────────────────────────────────────────────────────────────────────────
    FactLayer — frontend logic
-   No framework, no build step. Vanilla JS kept intentionally readable.
+   Simple, Minimalist & Cute UI Interaction
    ───────────────────────────────────────────────────────────────────────── */
 
 const API = "http://localhost:8000";
@@ -35,11 +35,20 @@ document.querySelectorAll(".tab").forEach(tab => {
 const uploadZone = document.getElementById("upload-zone");
 const fileInput  = document.getElementById("file-input");
 
-document.getElementById("browse-btn").addEventListener("click", () => fileInput.click());
-uploadZone.addEventListener("click", e => { if (e.target !== document.getElementById("browse-btn")) fileInput.click(); });
+document.getElementById("browse-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  fileInput.click();
+});
 
-uploadZone.addEventListener("dragover", e => { e.preventDefault(); uploadZone.classList.add("dragging"); });
-uploadZone.addEventListener("dragleave",  () => uploadZone.classList.remove("dragging"));
+uploadZone.addEventListener("click", () => fileInput.click());
+
+uploadZone.addEventListener("dragover", e => {
+  e.preventDefault();
+  uploadZone.classList.add("dragging");
+});
+
+uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("dragging"));
+
 uploadZone.addEventListener("drop", e => {
   e.preventDefault();
   uploadZone.classList.remove("dragging");
@@ -53,11 +62,11 @@ fileInput.addEventListener("change", () => {
 
 async function uploadFile(file) {
   if (!file.name.endsWith(".pdf")) {
-    showResult("error", `${file.name} is not a PDF.`);
+    showResult("error", `"${file.name}" is not a PDF file. Please upload a PDF.`);
     return;
   }
 
-  setProcessing(true, `Processing ${file.name}…`, "Extracting text and running LLM analysis");
+  setProcessing(true, `Reading ${file.name}…`, "Extracting facts & checking relationships with Gemini");
 
   const formData = new FormData();
   formData.append("file", file);
@@ -69,16 +78,15 @@ async function uploadFile(file) {
     if (!res.ok) throw new Error(data.detail || "Upload failed");
 
     showResult("success",
-      `✓ <strong>${file.name}</strong> — ` +
-      `${data.facts_extracted} facts extracted across ${data.pages_processed} pages, ` +
-      `${data.relationships_found} relationships found. ` +
-      `Document quality: ${Math.round(data.quality_score * 100)}%`
+      `✦ <strong>${escHtml(file.name)}</strong> successfully analyzed! ` +
+      `Extracted <strong>${data.facts_extracted} facts</strong> across ${data.pages_processed} pages, ` +
+      `and identified <strong>${data.relationships_found} connections</strong>.`
     );
 
     await refreshData();
 
   } catch (err) {
-    showResult("error", `✗ ${err.message}`);
+    showResult("error", `✕ ${err.message}`);
   } finally {
     setProcessing(false);
   }
@@ -111,42 +119,59 @@ async function refreshData() {
 function renderDocuments() {
   const container = document.getElementById("documents-list");
   const empty     = document.getElementById("docs-empty");
+  const clearBtn  = document.getElementById("clear-all-docs-btn");
+
+  if (clearBtn) {
+    clearBtn.onclick = clearAllDocuments;
+  }
 
   if (!allDocuments.length) {
     if (container) container.innerHTML = "";
-    empty && empty.classList.remove("hidden");
+    if (empty) empty.classList.remove("hidden");
+    if (clearBtn) clearBtn.classList.add("hidden");
     return;
   }
-  empty && empty.classList.add("hidden");
+
+  if (empty) empty.classList.add("hidden");
+  if (clearBtn) clearBtn.classList.remove("hidden");
 
   container.innerHTML = allDocuments.map(doc => {
     const quality = Math.round((doc.quality_score || 0) * 100);
-    const qColor  = quality >= 75 ? "var(--green)" : quality >= 50 ? "var(--amber)" : "var(--red)";
+    const qColor  = quality >= 75 ? "var(--green)" : quality >= 50 ? "var(--amber)" : "var(--rose)";
     return `
       <div class="doc-card" id="doc-${doc.id}">
         <div class="doc-info">
-          <div class="doc-name" title="${doc.filename}">${doc.filename}</div>
+          <div class="doc-name" title="${escHtml(doc.filename)}">📄 ${escHtml(doc.filename)}</div>
           <div class="doc-meta">
-            <span class="doc-stat">📄 ${doc.page_count ?? "?"} pages</span>
-            <span class="doc-stat">◈ ${doc.fact_count ?? 0} facts</span>
+            <span class="doc-stat">${doc.page_count ?? "?"} pages</span>
+            <span class="doc-stat">·</span>
+            <span class="doc-stat">✦ ${doc.fact_count ?? 0} facts</span>
+            <span class="doc-stat">·</span>
             <span class="doc-stat">
-              Quality
+              Quality ${quality}%
               <span class="quality-bar">
                 <span class="quality-fill" style="width:${quality}%; background:${qColor}"></span>
               </span>
-              ${quality}%
             </span>
           </div>
         </div>
-        <button class="delete-btn" onclick="deleteDocument('${doc.id}')">Remove</button>
+        <button class="delete-btn" onclick="deleteDocument('${doc.id}')" title="Remove document">Remove</button>
       </div>
     `;
   }).join("");
 }
 
 async function deleteDocument(docId) {
-  if (!confirm("Remove this document and all its facts?")) return;
+  if (!confirm("Remove this document and all its extracted facts?")) return;
   await fetch(`${API}/documents/${docId}`, { method: "DELETE" });
+  await refreshData();
+  renderFacts();
+  renderRelationships();
+}
+
+async function clearAllDocuments() {
+  if (!confirm("Are you sure you want to remove ALL documents and clear all facts?")) return;
+  await fetch(`${API}/documents`, { method: "DELETE" });
   await refreshData();
   renderFacts();
   renderRelationships();
@@ -170,7 +195,13 @@ function renderFacts() {
   }
 
   if (!filtered.length) {
-    container.innerHTML = `<p class="empty-state">No facts match the current filters.</p>`;
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">✦</div>
+        <p class="empty-title">${allFacts.length ? "No facts match current filters" : "No facts extracted yet"}</p>
+        <p class="empty-subtitle">${allFacts.length ? "Try resetting your filters above." : "Upload a PDF in the Upload tab to discover extracted claims."}</p>
+      </div>
+    `;
     return;
   }
 
@@ -190,7 +221,7 @@ function renderFacts() {
         <p class="fact-quote">"${escHtml(truncate(f.exact_quote, 160))}"</p>
         <div class="fact-meta">
           <span class="badge badge-${f.fact_type}">${f.fact_type}</span>
-          ${scope ? `<span class="badge" style="background:var(--surface-2);color:var(--text-muted)">${escHtml(scope)}</span>` : ""}
+          ${scope ? `<span class="badge badge-scope">${escHtml(scope)}</span>` : ""}
         </div>
         ${f.uncertainty_reason ? `<p class="uncertainty-note">⚠ ${escHtml(f.uncertainty_reason)}</p>` : ""}
         <p class="fact-source">
@@ -232,16 +263,20 @@ function renderRelationships() {
   if (activeRelFilter !== "all") filtered = filtered.filter(r => r.relationship === activeRelFilter);
 
   if (!filtered.length) {
-    container.innerHTML = `<p class="empty-state">
-      ${allRelationships.length ? "No relationships of this type found." : "Upload at least two documents to discover relationships."}
-    </p>`;
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🌱</div>
+        <p class="empty-title">${allRelationships.length ? "No connections match this filter" : "No cross-document connections yet"}</p>
+        <p class="empty-subtitle">${allRelationships.length ? "Try selecting 'All' above." : "Upload 2 or more reports (like FY23 and FY24) to see agreements and contradictions."}</p>
+      </div>
+    `;
     return;
   }
 
   container.innerHTML = filtered.map(r => {
     const typeLabel = {
       CORROBORATED: "✓ Corroborated",
-      CONTRADICTED: "✗ Contradicted",
+      CONTRADICTED: "✕ Contradicted",
       RECONCILED:   "⟳ Reconciled",
     }[r.relationship] || r.relationship;
 
@@ -250,7 +285,7 @@ function renderRelationships() {
         <div class="rel-header">
           <span class="rel-type-badge rel-${r.relationship}">${typeLabel}</span>
           <span class="rel-docs">${escHtml(r.filename_a)} ↔ ${escHtml(r.filename_b)}</span>
-          <span class="rel-conf">${Math.round(r.confidence * 100)}% conf</span>
+          <span class="rel-conf">${Math.round(r.confidence * 100)}% match</span>
         </div>
 
         <div class="rel-facts">
@@ -269,10 +304,10 @@ function renderRelationships() {
         </div>
 
         <div class="rel-reasoning">
-          <span class="rel-reasoning-label">System reasoning</span>
+          <span class="rel-reasoning-label">Reasoning & Alignment</span>
           <p class="rel-reasoning-text">${escHtml(r.reasoning)}</p>
           ${r.reconciliation_context
-            ? `<p class="rel-reconcile-note">Context: ${escHtml(r.reconciliation_context)}</p>`
+            ? `<p class="rel-reconcile-note">Note: ${escHtml(r.reconciliation_context)}</p>`
             : ""}
         </div>
       </div>
@@ -302,12 +337,12 @@ function showResult(type, html) {
   const card = document.getElementById("result-card");
   card.className = `result-card ${type}`;
   card.innerHTML = html;
-  setTimeout(() => card.classList.add("hidden"), 7000);
+  setTimeout(() => card.classList.add("hidden"), 8000);
 }
 
 function escHtml(str) {
   if (!str) return "";
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function truncate(str, n) {

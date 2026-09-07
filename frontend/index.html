@@ -3,10 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Fact Knowledge Layer</title>
-  <meta name="description" content="Upload PDFs, extract facts, and discover corroborations and contradictions across documents." />
+  <title>FactLayer — Clean & Minimal Fact Intelligence</title>
+  <meta name="description" content="A simple, cute, and minimalist tool to extract facts and explore connections between PDF documents." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
@@ -16,17 +17,42 @@
     <header class="header">
       <div class="header-inner">
         <div class="logo">
-          <span class="logo-icon">◈</span>
-          <span class="logo-text">FactLayer</span>
-          <span class="logo-badge">beta</span>
+          <div class="logo-icon-wrap">
+            <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+            </svg>
+          </div>
+          <span class="logo-text">factlayer</span>
+          <span class="logo-badge">minimal</span>
         </div>
+
         <nav class="tabs" role="tablist">
-          <button class="tab active" data-tab="upload" role="tab" aria-selected="true" id="tab-upload">Upload</button>
+          <button class="tab active" data-tab="upload" role="tab" aria-selected="true" id="tab-upload">
+            <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            Upload
+          </button>
           <button class="tab" data-tab="facts" role="tab" aria-selected="false" id="tab-facts">
+            <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="9" y1="9" x2="15" y2="9"></line>
+              <line x1="9" y1="13" x2="15" y2="13"></line>
+              <line x1="9" y1="17" x2="13" y2="17"></line>
+            </svg>
             Facts <span class="tab-count" id="facts-count">0</span>
           </button>
           <button class="tab" data-tab="relationships" role="tab" aria-selected="false" id="tab-relationships">
-            Relationships <span class="tab-count" id="rels-count">0</span>
+            <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="18" cy="5" r="3"></circle>
+              <circle cx="6" cy="12" r="3"></circle>
+              <circle cx="18" cy="19" r="3"></circle>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+            </svg>
+            Connections <span class="tab-count" id="rels-count">0</span>
           </button>
         </nav>
       </div>
@@ -36,25 +62,36 @@
     <main class="panel" id="panel-upload">
       <div class="panel-inner">
 
-        <div class="section-header">
-          <h1 class="section-title">Document Intelligence</h1>
-          <p class="section-sub">Upload PDFs to extract facts and discover cross-document relationships</p>
+        <div class="hero-section">
+          <span class="hero-pill">✦ Document Reader & Fact Checker</span>
+          <h1 class="hero-title">Simple, grounded fact intelligence</h1>
+          <p class="hero-sub">Drop your financial reports or prospectuses here. We extract verified claims, trace quotes to page numbers, and connect differences across documents.</p>
         </div>
 
         <!-- Upload Zone -->
         <div class="upload-zone" id="upload-zone">
           <input type="file" id="file-input" accept=".pdf" multiple hidden />
-          <div class="upload-icon">⬆</div>
-          <p class="upload-label">Drop PDFs here or <button class="link-btn" id="browse-btn">browse</button></p>
-          <p class="upload-hint">Facts are extracted and compared incrementally — no rebuild needed</p>
+          <div class="upload-icon-circle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="12" y1="18" x2="12" y2="12"></line>
+              <line x1="9" y1="15" x2="12" y2="12"></line>
+              <line x1="15" y1="15" x2="12" y2="12"></line>
+            </svg>
+          </div>
+          <p class="upload-label">
+            Drag & drop PDF files here, or <button class="browse-action-btn" id="browse-btn" type="button">browse files</button>
+          </p>
+          <p class="upload-hint">Upload 2 or more reports to automatically discover cross-document agreements & contradictions</p>
         </div>
 
         <!-- Processing State -->
         <div class="processing-card hidden" id="processing-card">
-          <div class="spinner"></div>
+          <div class="cute-spinner"></div>
           <div class="processing-text">
-            <p class="processing-title" id="processing-title">Processing…</p>
-            <p class="processing-sub" id="processing-sub">Extracting facts and running comparisons</p>
+            <p class="processing-title" id="processing-title">Reading document…</p>
+            <p class="processing-sub" id="processing-sub">Extracting verified facts and mapping quotes</p>
           </div>
         </div>
 
@@ -62,10 +99,17 @@
         <div class="result-card hidden" id="result-card"></div>
 
         <!-- Documents List -->
-        <div id="documents-section">
-          <h2 class="list-heading">Uploaded Documents</h2>
+        <div id="documents-section" class="documents-section">
+          <div class="section-top-row">
+            <h2 class="list-heading">Uploaded Documents</h2>
+            <button class="clear-all-btn hidden" id="clear-all-docs-btn" title="Clear all stored documents">Wipe All</button>
+          </div>
           <div id="documents-list" class="documents-list">
-            <p class="empty-state" id="docs-empty">No documents yet. Upload your first PDF above.</p>
+            <div class="empty-state" id="docs-empty">
+              <div class="empty-icon">📄</div>
+              <p class="empty-title">No documents yet</p>
+              <p class="empty-subtitle">Upload your first PDF above to see it appear here.</p>
+            </div>
           </div>
         </div>
 
@@ -76,28 +120,36 @@
     <main class="panel hidden" id="panel-facts">
       <div class="panel-inner">
         <div class="section-header">
-          <h2 class="section-title">Extracted Facts</h2>
+          <div>
+            <h2 class="section-title">Extracted Facts</h2>
+            <p class="section-sub">Granular claims grounded with verbatim quotes and page numbers</p>
+          </div>
           <div class="filter-row">
-            <select id="facts-doc-filter" class="select">
+            <select id="facts-doc-filter" class="select-cute">
               <option value="">All documents</option>
             </select>
-            <select id="facts-type-filter" class="select">
-              <option value="">All types</option>
+            <select id="facts-type-filter" class="select-cute">
+              <option value="">All fact types</option>
               <option value="numerical">Numerical</option>
               <option value="entity">Entity</option>
               <option value="state">State</option>
               <option value="date">Date</option>
             </select>
-            <select id="facts-conf-filter" class="select">
-              <option value="">Any confidence</option>
+            <select id="facts-conf-filter" class="select-cute">
+              <option value="">All confidence</option>
               <option value="high">High (&gt;80%)</option>
               <option value="medium">Medium (50–80%)</option>
               <option value="low">Low (&lt;50%)</option>
             </select>
           </div>
         </div>
+
         <div id="facts-list" class="facts-grid">
-          <p class="empty-state">Upload documents to see extracted facts here.</p>
+          <div class="empty-state">
+            <div class="empty-icon">✦</div>
+            <p class="empty-title">No facts to display yet</p>
+            <p class="empty-subtitle">Upload a PDF to extract structured facts.</p>
+          </div>
         </div>
       </div>
     </main>
@@ -106,16 +158,23 @@
     <main class="panel hidden" id="panel-relationships">
       <div class="panel-inner">
         <div class="section-header">
-          <h2 class="section-title">Cross-Document Relationships</h2>
+          <div>
+            <h2 class="section-title">Cross-Document Connections</h2>
+            <p class="section-sub">Automated fact alignment across multiple source documents</p>
+          </div>
           <div class="filter-row">
             <button class="filter-chip active" data-rel="all">All</button>
-            <button class="filter-chip" data-rel="CORROBORATED">✓ Corroborated</button>
-            <button class="filter-chip" data-rel="CONTRADICTED">✗ Contradicted</button>
-            <button class="filter-chip" data-rel="RECONCILED">⟳ Reconciled</button>
+            <button class="filter-chip chip-corroborated" data-rel="CORROBORATED">✓ Corroborated</button>
+            <button class="filter-chip chip-contradicted" data-rel="CONTRADICTED">✕ Contradicted</button>
+            <button class="filter-chip chip-reconciled" data-rel="RECONCILED">⟳ Reconciled</button>
           </div>
         </div>
         <div id="relationships-list" class="relationships-list">
-          <p class="empty-state">Upload at least two documents to discover relationships.</p>
+          <div class="empty-state">
+            <div class="empty-icon">🌱</div>
+            <p class="empty-title">No connections discovered yet</p>
+            <p class="empty-subtitle">Upload at least two documents (e.g. FY23 and FY24 reports) to see how facts agree or differ.</p>
+          </div>
         </div>
       </div>
     </main>

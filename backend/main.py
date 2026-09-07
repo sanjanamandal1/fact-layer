@@ -169,6 +169,19 @@ def get_relationships():
     return rels
 
 
+@app.delete("/documents")
+def delete_all_documents():
+    for doc in db.list_documents():
+        db.delete_document(doc["id"])
+    if UPLOAD_DIR.exists():
+        for f in UPLOAD_DIR.glob("*.pdf"):
+            try:
+                f.unlink(missing_ok=True)
+            except Exception:
+                pass
+    return {"status": "all deleted"}
+
+
 @app.delete("/documents/{doc_id}")
 def delete_document(doc_id: str):
     doc = db.get_document(doc_id)
@@ -177,5 +190,5 @@ def delete_document(doc_id: str):
     db.delete_document(doc_id)
     pdf_path = UPLOAD_DIR / f"{doc_id}.pdf"
     if pdf_path.exists():
-        pdf_path.unlink()
+        pdf_path.unlink(missing_ok=True)
     return {"deleted": doc_id}

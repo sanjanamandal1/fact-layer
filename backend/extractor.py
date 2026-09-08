@@ -184,8 +184,8 @@ def extract_pages(pdf_path: str) -> Tuple[List[Tuple[int, str, float]], int, flo
     # Filter out empty or unreadable pages
     valid_pages = [p for p in pages if p[2] >= 0.35 and len(p[1].strip()) >= 50]
 
-    # Target up to 36 most fact-dense pages
-    MAX_PROCESSED_PAGES = 36
+    # Target up to 20 most fact-dense pages (balances thoroughness vs. free-tier speed)
+    MAX_PROCESSED_PAGES = 20
     if len(valid_pages) <= MAX_PROCESSED_PAGES:
         selected_pages = valid_pages
     else:
@@ -251,10 +251,11 @@ Document pages:
 """
 
 
-def extract_facts_from_document(pages: List[Tuple[int, str, float]], batch_size: int = 10) -> List[dict]:
+def extract_facts_from_document(pages: List[Tuple[int, str, float]], batch_size: int = 20) -> List[dict]:
     """
-    Extract facts in small batches (e.g. 10 pages per call) using the high-density prompt.
-    Produces 50-100+ granular facts while staying safely below the 15 RPM free-tier limit.
+    Extract facts in batches of up to 20 pages per call using the high-density prompt.
+    20 pages ≈ ~64k chars, well within Gemini's context window.
+    1-2 API calls per document keeps us safely under the free-tier 15 RPM limit.
     """
     if not pages:
         return []

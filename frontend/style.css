@@ -990,3 +990,31 @@ html, body {
   max-width: 380px;
   margin: 0 auto;
 }
+
+/* ── Progress Bar ──────────────────────────────────────────────────────── */
+
+.progress-bar-wrap {
+  width: 100%;
+  max-width: 320px;
+  height: 5px;
+  background: var(--border);
+  border-radius: var(--radius-pill);
+  margin: 14px auto 6px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), #ffb347);
+  border-radius: var(--radius-pill);
+  transition: width 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.processing-timer {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+  margin-top: 2px;
+  letter-spacing: 0.01em;
+}

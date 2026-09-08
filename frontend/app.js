@@ -67,6 +67,7 @@ async function uploadFile(file) {
   }
 
   setProcessing(true, `Reading ${file.name}…`, "Extracting facts & checking relationships with Gemini");
+  startProgressBar();
 
   const formData = new FormData();
   formData.append("file", file);
@@ -77,6 +78,7 @@ async function uploadFile(file) {
 
     if (!res.ok) throw new Error(data.detail || "Upload failed");
 
+    finishProgressBar();
     showResult("success",
       `✦ <strong>${escHtml(file.name)}</strong> successfully analyzed! ` +
       `Extracted <strong>${data.facts_extracted} facts</strong> across ${data.pages_processed} pages, ` +
@@ -86,11 +88,68 @@ async function uploadFile(file) {
     await refreshData();
 
   } catch (err) {
+    finishProgressBar(true);
     showResult("error", `✕ ${err.message}`);
   } finally {
     setProcessing(false);
   }
 }
+
+// ── Progress Bar ──────────────────────────────────────────────────────────
+
+let _progressTimer  = null;
+let _elapsedTimer   = null;
+let _elapsed        = 0;
+
+const PROGRESS_STEPS = [
+  { pct: 12, delay: 800,  label: "Reading pages…" },
+  { pct: 28, delay: 4000, label: "Selecting key pages…" },
+  { pct: 45, delay: 8000, label: "Extracting facts with Gemini…" },
+  { pct: 62, delay: 18000, label: "Still extracting — large document…" },
+  { pct: 76, delay: 28000, label: "Almost done…" },
+  { pct: 88, delay: 38000, label: "Comparing across documents…" },
+];
+
+function startProgressBar() {
+  const fill  = document.getElementById("progress-bar-fill");
+  const timer = document.getElementById("processing-timer");
+  if (!fill) return;
+
+  fill.style.width = "0%";
+  _elapsed = 0;
+  if (timer) timer.textContent = "";
+
+  // Tick elapsed time every second
+  _elapsedTimer = setInterval(() => {
+    _elapsed++;
+    if (timer) timer.textContent = `${_elapsed}s elapsed — AI is thinking…`;
+  }, 1000);
+
+  // Step through realistic progress milestones
+  _progressTimer = [];
+  PROGRESS_STEPS.forEach(({ pct, delay, label }) => {
+    const t = setTimeout(() => {
+      fill.style.width = pct + "%";
+      document.getElementById("processing-sub").textContent = label;
+    }, delay);
+    _progressTimer.push(t);
+  });
+}
+
+function finishProgressBar(error = false) {
+  const fill = document.getElementById("progress-bar-fill");
+  if (fill) {
+    fill.style.width = "100%";
+    fill.style.background = error
+      ? "var(--rose)"
+      : "linear-gradient(90deg, var(--green), #34d399)";
+  }
+  if (_elapsedTimer) clearInterval(_elapsedTimer);
+  if (_progressTimer) _progressTimer.forEach(clearTimeout);
+  const timer = document.getElementById("processing-timer");
+  if (timer) timer.textContent = error ? "Processing failed" : `Done in ${_elapsed}s`;
+}
+
 
 // ── Data Refresh ───────────────────────────────────────────────────────────
 

@@ -1,6 +1,8 @@
 fastapi
 uvicorn[standard]
 pdfplumber
+pypdf
+python-dotenv
 google-genai
 scikit-learn
 numpy

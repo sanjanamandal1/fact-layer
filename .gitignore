@@ -3,11 +3,15 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Uploaded files and local database (runtime artifacts)
+# Uploaded files and local database (runtime artifacts — never commit these)
 backend/uploads/
 backend/facts.db
 backend/facts.db-shm
 backend/facts.db-wal
+uploads/
+facts.db
+facts.db-shm
+facts.db-wal
 
 # Secrets
 .env

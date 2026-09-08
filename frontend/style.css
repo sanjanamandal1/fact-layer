@@ -1018,3 +1018,35 @@ html, body {
   margin-top: 2px;
   letter-spacing: 0.01em;
 }
+
+/* ── Doc Actions Row ───────────────────────────────────────────────────── */
+
+.doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recompare-btn {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-pill);
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+  white-space: nowrap;
+}
+
+.recompare-btn:hover:not(:disabled) {
+  background: #ffe8e4;
+  border-color: var(--accent);
+}
+
+.recompare-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

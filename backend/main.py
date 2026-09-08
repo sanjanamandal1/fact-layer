@@ -210,3 +210,59 @@ def delete_document(doc_id: str):
     if pdf_path.exists():
         pdf_path.unlink(missing_ok=True)
     return {"deleted": doc_id}
+
+
+@app.post("/recompare")
+def recompare_all():
+    """
+    Re-run cross-document comparison across all existing facts.
+    Useful after changing the similarity threshold or uploading new docs
+    without triggering a comparison (e.g. first doc has no peers to compare).
+    Only computes relationships that don't already exist.
+    """
+    all_docs = db.list_documents()
+    if len(all_docs) < 2:
+        return {"relationships_found": 0, "message": "Need at least 2 documents to compare."}
+
+    doc_cache = {d["id"]: d["filename"] for d in all_docs}
+    all_facts = db.get_all_facts()
+
+    # Group facts by document
+    facts_by_doc = {}
+    for f in all_facts:
+        facts_by_doc.setdefault(f["document_id"], []).append(f)
+
+    doc_ids = list(facts_by_doc.keys())
+    relationships_created = 0
+
+    # Compare every pair of documents (both directions covered by find_candidate_pairs)
+    for i in range(len(doc_ids)):
+        for j in range(i + 1, len(doc_ids)):
+            facts_a = facts_by_doc[doc_ids[i]]
+            facts_b = facts_by_doc[doc_ids[j]]
+
+            candidates = find_candidate_pairs(facts_a, facts_b)[:20]
+
+            for fact_a, fact_b, _sim in candidates:
+                if db.relationship_exists(fact_a["id"], fact_b["id"]):
+                    continue
+
+                result = compare_facts(
+                    fact_a, fact_b,
+                    doc_cache.get(fact_a["document_id"], "Unknown"),
+                    doc_cache.get(fact_b["document_id"], "Unknown"),
+                )
+
+                if result["relationship"] == "UNRELATED":
+                    continue
+
+                db.insert_relationship({
+                    "id": str(uuid.uuid4()),
+                    "fact_a_id": fact_a["id"],
+                    "fact_b_id": fact_b["id"],
+                    **result,
+                })
+                relationships_created += 1
+
+    return {"relationships_found": relationships_created}
+

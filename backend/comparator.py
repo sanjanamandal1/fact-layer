@@ -84,8 +84,10 @@ def generate_content_with_fallback(client, contents):
         raise last_error
 
 # Minimum semantic similarity to consider two facts worth comparing.
-# Too low → noisy LLM calls; too high → miss paraphrases.
-SIMILARITY_THRESHOLD = 0.55
+# 0.30 casts a wide enough net to catch paraphrases across documents that
+# use different vocabulary for the same concept (e.g. macro-economic reports
+# from different institutions). The LLM filters out genuine non-matches.
+SIMILARITY_THRESHOLD = 0.30
 
 
 COMPARISON_PROMPT = """You are a senior financial document analyst comparing two facts extracted from different source documents.

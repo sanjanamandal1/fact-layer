@@ -188,11 +188,18 @@ function renderDocuments() {
     if (container) container.innerHTML = "";
     if (empty) empty.classList.remove("hidden");
     if (clearBtn) clearBtn.classList.add("hidden");
+    const recompBtn = document.getElementById("recompare-btn");
+    if (recompBtn) recompBtn.classList.add("hidden");
     return;
   }
 
   if (empty) empty.classList.add("hidden");
   if (clearBtn) clearBtn.classList.remove("hidden");
+  const recompBtn = document.getElementById("recompare-btn");
+  if (recompBtn) {
+    recompBtn.classList.toggle("hidden", allDocuments.length < 2);
+    recompBtn.onclick = recompareAll;
+  }
 
   container.innerHTML = allDocuments.map(doc => {
     const quality = Math.round((doc.quality_score || 0) * 100);
@@ -234,6 +241,23 @@ async function clearAllDocuments() {
   await refreshData();
   renderFacts();
   renderRelationships();
+}
+
+async function recompareAll() {
+  const btn = document.getElementById("recompare-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "⟳ Running…"; }
+
+  try {
+    const res  = await fetch(`${API}/recompare`, { method: "POST" });
+    const data = await res.json();
+    showResult("success", `✦ Found <strong>${data.relationships_found} new connection${data.relationships_found !== 1 ? "s" : ""}</strong> across your documents.`);
+    await refreshData();
+    renderRelationships();
+  } catch (err) {
+    showResult("error", `✕ Recompare failed: ${err.message}`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "⟳ Find Connections"; }
+  }
 }
 
 // ── Facts View ─────────────────────────────────────────────────────────────

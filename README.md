@@ -1,3 +1,12 @@
+```text
+███████╗ █████╗  ██████╗████████╗██╗      █████╗ ██╗   ██╗███████╗██████╗ 
+██╔════╝██╔══██╗██╔════╝╚══██╔══╝██║     ██╔══██╗╚██╗ ██╔╝██╔════╝██╔══██╗
+█████╗  ███████║██║        ██║   ██║     ███████║ ╚████╔╝ █████╗  ██████╔╝
+██╔══╝  ██╔══██║██║        ██║   ██║     ██╔══██║  ╚██╔╝  ██╔══╝  ██╔══██╗
+██║     ██║  ██║╚██████╗   ██║   ███████╗██║  ██║   ██║   ███████╗██║  ██║
+╚═╝     ╚═╝  ╚═╝ ╚═════╝   ╚═╝   ╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝
+```
+
 # Fact Knowledge Layer
 
 Reads financial and legal PDFs, pulls out specific facts and numbers, grounds every claim with its original quote and page number, and figures out when facts across documents agree, conflict, or only seem to conflict. Built for merchant banking and IPO readiness checks.

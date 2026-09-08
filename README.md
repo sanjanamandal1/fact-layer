@@ -1,152 +1,160 @@
 # Fact Knowledge Layer
 
-A system that reads financial and legal PDFs, extracts meaningful facts, grounds every fact in its source evidence, and discovers when facts across documents agree, conflict, or only *appear* to conflict.
+Reads financial and legal PDFs, pulls out specific facts and numbers, grounds every claim with its original quote and page number, and figures out when facts across documents agree, conflict, or only seem to conflict. Built for merchant banking and IPO readiness checks.
 
 ---
 
-## Setup and Run
+## Setup and Run Instructions
 
-**Requirements:** Python 3.10+, a free Gemini API key from [aistudio.google.com](https://aistudio.google.com)
+### Prerequisites
+- Python 3.10+
+- A free Gemini API key from [Google AI Studio](https://aistudio.google.com/)
 
-```bash
-# 1. Clone and navigate
-git clone <your-repo-url>
-cd fact-knowledge-layer
+### Installation & Run
 
-# 2. Install dependencies
-cd backend
-pip install -r requirements.txt
+1. Clone repository and go to the backend folder:
+   ```bash
+   git clone <your-repo-url>
+   cd fact-knowledge-layer/backend
+   ```
 
-# 3. Set your Gemini API key
-# Windows
-set GEMINI_API_KEY=your_key_here
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-# macOS / Linux
-export GEMINI_API_KEY=your_key_here
+3. Set your Gemini API key:
+   - **Windows (PowerShell):**
+     ```powershell
+     $env:GEMINI_API_KEY = "your_gemini_api_key_here"
+     ```
+   - **macOS / Linux:**
+     ```bash
+     export GEMINI_API_KEY="your_gemini_api_key_here"
+     ```
 
-# 4. Start the server (serves both API and frontend)
-uvicorn main:app --reload
-```
+4. Start the server:
+   ```bash
+   uvicorn main:app --reload
+   ```
 
-Open [http://localhost:8000](http://localhost:8000) in your browser. Upload any PDF — no config, no hardcoded rules.
+5. Open your browser at:
+   ```
+   http://localhost:8000
+   ```
+   *The web UI is served directly by FastAPI — no Node.js, npm, or build step needed.*
 
 ---
 
-## Demo Video
+## Video Demo
 
-[▶ Watch the 3-minute demo](YOUR_VIDEO_LINK_HERE)
-
-The video shows a full upload-to-insight flow and all four required cases below.
-
----
-
-## The Four Required Cases
-
-### 1. Corroboration — Same fact, different wording
-
-Two documents may state the same registered address or revenue figure using different formats. The system embeds both claims semantically, flags them as candidates, and the LLM confirms they agree — surfacing both source quotes side by side.
-
-> *"Both documents confirm the company's CIN as U72900KA2020PTC138452, though one writes it inline and the other in a header table."*
-
-### 2. Genuine Contradiction
-
-A director listed as active in one filing and as having resigned in a later document. Same person, same company, different status — a real conflict the LLM cannot explain away with context.
-
-> *"Doc 1 (FY22 annual report): 'Mr. Rajiv Menon serves as Independent Director.' Doc 2 (FY24 filing): 'Mr. Rajiv Menon tendered his resignation effective June 2023.'"*
-
-### 3. Apparent Contradiction — Explained by Context
-
-Revenue figures that look mismatched because one is standalone and the other is consolidated, or because one covers six months while the other covers the full year. The system detects the scope and period tags on each fact and classifies the pair as RECONCILED with an explanation.
-
-> *"₹95 Cr (standalone, H1 FY23) vs ₹210 Cr (consolidated, FY23). Different scope and period — not a conflict."*
-
-### 4. Extraction Failure — Surfaced Honestly
-
-Multi-row merged tables in pdfplumber lose their row-header alignment. Numbers get extracted without context. The system detects this by checking if page text quality falls below a threshold (character-density heuristic), lowers confidence on all facts from that page, and flags them in the "Uncertainty Log" in the UI.
-
-**What I'd fix:** Use PyMuPDF's `get_text("dict")` or a bounding-box-aware parser to reconstruct table structure before passing to the LLM. For scanned documents, Tesseract OCR as a preprocessing step would recover text the current approach drops entirely.
+> 📹 **Video Demo Link:** [Watch Demo on Loom / Drive](YOUR_VIDEO_DEMO_LINK_HERE) *(Under 3 minutes)*
+>
+> **What the demo covers:**
+> 1. Uploading PDF filings and showing the real-time extraction progress.
+> 2. Inspecting extracted facts with their exact quotes and page numbers.
+> 3. The four required cases:
+>    - **Case 1 (Corroboration):** The same number reported across two documents in different formats.
+>    - **Case 2 (Contradiction):** Real conflict between two filings.
+>    - **Case 3 (Reconciliation):** An apparent difference explained by period or reporting scope.
+>    - **Case 4 (Extraction Failure):** Messy tables or bad formatting flagged honestly with confidence scores.
 
 ---
 
 ## Approach
 
-### The core problem I was solving
-
-Financial documents are adversarial for simple extraction systems. The same fact can appear six times in one document and mean something different each time — audited vs unaudited, standalone vs consolidated, current year vs restated prior year. A system that extracts numbers without understanding this context will generate false contradictions and miss real ones. Most of the work here is in that middle layer.
-
-### Architecture
+### How the Pipeline Works
 
 ```
 PDF Upload
-    │
-    ▼
-Page-by-page extraction (pdfplumber)
-    + text quality assessment (character density heuristic)
-    │
-    ▼
-Fact extraction per page (Gemini 1.5 Flash)
-    → claim, type, temporal scope, entity scope, exact quote, confidence
-    │
-    ▼
-Embedding (sentence-transformers / all-MiniLM-L6-v2, runs locally)
-    │
-    ▼
-Cross-document candidate pairs (cosine similarity ≥ 0.55)
-    │
-    ▼
-LLM comparison per candidate pair (Gemini 1.5 Flash)
-    → CORROBORATED / CONTRADICTED / RECONCILED / UNRELATED + reasoning
-    │
-    ▼
-SQLite storage → REST API → Vanilla JS UI
+   │
+   ▼
+1. Page-by-Page Reading & Quality Check
+   • Uses pypdf for speed, falls back to pdfplumber
+   • Scores each page for readability (flags broken text or empty scans)
+   │
+   ▼
+2. Page Ranking (Picking the Richest Pages)
+   • Scores pages based on numbers, currency symbols, and financial terms
+   • Selects the 20 most fact-rich pages (always keeps pages 1–3 for company info)
+   │
+   ▼
+3. Fact Extraction via Gemini
+   • Sends pages in batches to extract structured facts (JSON)
+   • Captures: claim, type, period, scope, exact quote, confidence, and page number
+   • Built-in model fallback automatically handles free-tier rate limits
+   │
+   ▼
+4. Local Embeddings
+   • scikit-learn HashingVectorizer (512-dim vectors)
+   • Runs locally in milliseconds with zero API cost and no rate limits
+   │
+   ▼
+5. Smart Pre-Filter (Similarity ≥ 0.30)
+   • Filters thousands of possible pairs down to the ~10–20 that actually look related
+   │
+   ▼
+6. Cross-Document Comparison (LLM)
+   • Labels each pair: CORROBORATED / CONTRADICTED / RECONCILED / UNRELATED
+   • Conservative approach: prefers RECONCILED if dates or scopes explain the difference
+   │
+   ▼
+7. Storage & UI (SQLite + Clean Single-Page App)
+   • Saves everything in a local SQLite database
+   • Clean UI to search facts, check quotes, and inspect connections
 ```
 
-### Key decisions and why
+### The Four Required Cases
 
-**Why page-by-page extraction, not full-document?**
-Fact extraction needs to return an exact page number for evidence grounding. Feeding the full document at once loses that granularity. It also lets us skip low-quality pages individually rather than degrading the whole document.
+#### 1. Corroboration — Same Fact, Different Wording
+- **What happened:** Both the Delhivery annual report and the Q4 earnings presentation report the debt-to-equity ratio as `0.01x` as of March 31, 2024.
+- **Evidence:** The presentation has it in a financial table as `"Debt/Equity (A/C)... 0.01x"`, while the annual report mentions `"March 31, 2024: 0.01"` in a summary section.
+- **System Reasoning:** The system matches the dates and numbers, realizes both documents are saying the same thing despite different wording, and marks it `CORROBORATED` with 100% confidence.
 
-**Why a similarity filter before LLM comparison?**
-Comparing every fact against every other fact across documents is O(n²) LLM calls — expensive and slow. Cosine similarity on local embeddings is cheap and runs in milliseconds. The LLM only sees candidate pairs that are already likely to be related.
+#### 2. Genuine Contradiction
+- **What happened:** In the Q4 earnings presentation (page 5), Delhivery states that Net Working Capital (NWC) days dropped from 38 to **31 days** in FY24. In the FY24 annual report (page 8), it says the NWC cycle dropped from 38 to **27 days**.
+- **Evidence:** Both documents describe the exact same company, the same metric, and the same fiscal year (FY24), but give two different ending numbers (31 vs 27).
+- **System Reasoning:** The system identifies that the scopes and dates match, but the numbers clash directly. It flags this as `CONTRADICTED` and shows both quotes side-by-side so an analyst can investigate.
 
-**Why conservative classification?**
-For a banking use-case, a false positive (calling something a contradiction when it isn't) erodes trust faster than a missed relationship. The comparison prompt is written to prefer RECONCILED over CONTRADICTED when any contextual explanation is plausible.
+#### 3. Apparent Contradiction Explained by Context (Reconciled)
+- **What happened:** Two revenue numbers for the same year differ (e.g. ₹7,200 Cr in one document vs ₹8,100 Cr in another).
+- **Evidence:** One document reports standalone financials, while the other reports consolidated financials (including subsidiaries). Or one reports 9-month results while the other covers the full year.
+- **System Reasoning:** Every extracted fact tracks its `temporal_scope` (e.g. FY24, Q3) and `entity_scope` (standalone vs. consolidated). When numbers differ, the system checks whether the reporting scope explains the gap. If so, it labels it `RECONCILED` with an explanation instead of raising a false alarm.
 
-**Why SQLite, not a graph database?**
-The assignment specifically notes that a graph database alone is not the solution. SQLite is transparent, portable, and sufficient for this scale. The interesting logic is in extraction and comparison — not the storage layer.
+#### 4. Extraction Failure — Surfaced Honestly
+- **What happened:** Tables with merged headers or complex columns lose their structure when turned into raw text. Numbers get extracted, but they can lose the row label that explains what the number means.
+- **How it's handled:** The system checks the text quality of every page. If a page has strange character spacing or low text density, any facts pulled from that page get a lower confidence score (below 0.60) and an `uncertainty_reason` note. Analysts see these highlighted with caution flags rather than trusting them blindly.
+- **How to improve it:** Use bounding-box table extraction (like PyMuPDF table rects) to reconstruct tables before sending text to the LLM, and add OCR preprocessing for scanned images.
 
-**Why Gemini 1.5 Flash for extraction?**
-The 1M-token context window means we could theoretically send entire documents at once. More practically, it's free, fast, and capable enough that the bottleneck is prompt quality, not model capability.
+### Key Engineering Decisions & Trade-Offs
 
-**Why vanilla JS for the frontend?**
-No build step, no framework overhead, runs directly from the static file server. The UI does three things — upload, show facts, show relationships — and vanilla JS handles that cleanly without hiding what's happening.
+- **Picking 20 Dense Pages vs. Dumping 400 Pages:** Feeding a 400-page prospectus into an LLM all at once loses accuracy, misses subtle details, and loses exact page citations. Scoring and picking the 20 richest financial pages captures the core numbers while keeping page numbers 100% accurate.
+- **Local Embeddings vs. Embedding API Calls:** If 3 documents have 100 facts each, comparing every pair with an LLM would take almost 5,000 to 30,000 API calls. Using a local `HashingVectorizer` filters this down to 10–20 high-likelihood candidates in under a second for zero cost.
+- **Conservative Comparison (Fewer False Alarms):** In IPO due diligence, crying wolf with false contradictions destroys trust immediately. The prompt is intentionally instructed to look for contextual explanations (like different periods or scopes) before declaring a contradiction.
+- **SQLite vs. Graph Database:** A graph database adds heavy setup without solving the hard part. The real challenge is extracting and comparing facts. SQLite is lightweight, portable, fast, and easy for reviewers to inspect.
+- **No-Build Vanilla Frontend:** Built with clean HTML, CSS, and plain JavaScript served right from FastAPI. No `npm install`, no webpack, and no broken node dependencies for the reviewer.
 
-### AI tools used
-- **Gemini 1.5 Flash** — fact extraction and cross-document comparison
-- **sentence-transformers (all-MiniLM-L6-v2)** — local semantic embeddings (free, no API key)
+### AI Tools Used
+- **Gemini Flash (`gemini-flash-latest`, `gemini-flash-lite-latest`):** Fast, low-cost model used for structured extraction and semantic comparison via Google GenAI SDK.
+- **scikit-learn HashingVectorizer:** Fast local text vectorizer for candidate pair pre-filtering.
 
 ---
 
 ## Limitations and Next Steps
 
-**What doesn't work well yet:**
+### Current Limitations
+1. **Scanned PDFs:** Pure image scans return little to no text with standard parsers. While our quality filter flags these pages, adding an OCR step (like Tesseract) is needed for full scanned PDF coverage.
+2. **Flattened Tables:** Complex multi-header tables lose their column-to-row alignments in plain text streams.
+3. **Name Matching:** Names are compared as plain text. If one filing says "Sunil Bansal" and another says "S.K. Bansal", an entity resolution step is needed to recognize they are the same person.
 
-- **Scanned PDFs.** pdfplumber returns garbled or empty text for image-based PDFs. The quality heuristic catches this and lowers confidence, but the facts are still poor. Fix: Tesseract OCR or Google Vision as a preprocessing step.
-
-- **Complex tables.** Merged cells and multi-header tables lose structure during text extraction. Numbers come through but row context is lost. Fix: bounding-box-aware extraction (PyMuPDF's dict mode) to reconstruct table structure before passing to the LLM.
-
-- **Disambiguation at scale.** With many documents, "Mr. Sharma" across three companies is ambiguous. The system currently has no entity resolution step — it matches on semantic similarity, not identity. Fix: a separate entity-linking pass to canonicalize named entities before comparison.
-
-- **Extraction latency.** Processing is synchronous. A 50-page PDF with dense content takes 30–60 seconds. Fix: a background job queue (Celery, or even a simple asyncio task) with polling for status.
-
-**What I'd build next for Superjoin specifically:**
-
-The natural next layer on top of this is a **fact audit checklist** for merchant bankers. Before a DRHP filing, a banker could upload the draft, prior annual reports, and director disclosures — and instead of reading 500 pages, get a structured list of: facts that are consistent across sources, facts that need reconciliation, and genuine conflicts that need resolution before filing. That's where this knowledge layer becomes genuinely valuable in the IPO readiness context.
+### Next Steps & Product Vision
+- **IPO Pre-Filing Audit Checklist:** An automated tool where merchant bankers upload draft prospectuses alongside prior annual reports to automatically flag discrepancies before filing with regulators.
+- **Table Cell Reconstruction:** Using spatial bounding boxes to keep table rows and columns aligned before parsing.
 
 ---
 
 ## Additional Notes
 
-The threshold for semantic similarity (0.55) is a tunable parameter. Lower it to catch more candidate pairs at the cost of more LLM calls and more noise. Raise it to only compare very similar claims. For financial documents, 0.55 worked well across the test set — it catches paraphrases and unit variations without generating too many spurious pairs.
-
-The system handles new documents incrementally. When a new PDF is uploaded, it only computes relationships between the new document's facts and all existing facts — it does not recompute existing cross-document relationships. This keeps upload time proportional to the size of the new document, not the total knowledge base.
+- **Incremental Processing (Bonus Point):** You can upload new documents one at a time without re-processing older documents. New facts are saved to SQLite and automatically compared against previously stored facts. You can also click **⟳ Find Connections** at any time to re-run comparisons.
+- **Rate-Limit Resilience:** The backend includes retry logic and fallback models so temporary rate limits on the free tier never crash the app.
+- **Runs Fully Locally:** No external vector database or cloud storage needed; all data and embeddings stay inside `facts.db`.

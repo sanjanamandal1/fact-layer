@@ -117,9 +117,10 @@ PDF Upload
 - **System Reasoning:** The system identifies that the scopes and dates match, but the numbers clash directly. It flags this as `CONTRADICTED` and shows both quotes side-by-side so an analyst can investigate.
 
 #### 3. Apparent Contradiction Explained by Context (Reconciled)
-- **What happened:** Two revenue numbers for the same year differ (e.g. ₹7,200 Cr in one document vs ₹8,100 Cr in another).
-- **Evidence:** One document reports standalone financials, while the other reports consolidated financials (including subsidiaries). Or one reports 9-month results while the other covers the full year.
-- **System Reasoning:** Every extracted fact tracks its `temporal_scope` (e.g. FY24, Q3) and `entity_scope` (standalone vs. consolidated). When numbers differ, the system checks whether the reporting scope explains the gap. If so, it labels it `RECONCILED` with an explanation instead of raising a false alarm.
+- **What happened:** In the 2022 IPO Prospectus, Delhivery's Corporate Identity Number (CIN) is listed as `U63090DL2011PLC221234`. In the FY24 Annual Report, it is listed as `L63090DL2011PLC221234`.
+- **Evidence:** Both documents report the official registration number, but with a different first letter ('U' vs 'L').
+- **System Reasoning:** Rather than flagging this as an error, the system recognizes that 'U' stands for Unlisted and 'L' stands for Listed. It explains that the difference is due to Delhivery completing its IPO and becoming a publicly listed entity between the 2022 filing and the 2024 report.
+- *(Also handles personnel updates over time, like the Company Secretary changing between 2022 and 2024, and standalone vs. consolidated financial differences).*
 
 #### 4. Extraction Failure — Surfaced Honestly
 - **What happened:** Tables with merged headers or complex columns lose their structure when turned into raw text. Numbers get extracted, but they can lose the row label that explains what the number means.

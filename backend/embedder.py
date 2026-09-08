@@ -1,13 +1,6 @@
 """
 Local embeddings using scikit-learn's HashingVectorizer.
 
-Why not Gemini embeddings?
-- text-embedding-004 is unavailable on the AI Studio free tier.
-- A local vectorizer has zero latency, zero API cost, and no rate limits.
-- For finding *candidate pairs* (the only job of embeddings here),
-  word-overlap similarity is plenty good enough — the LLM does the
-  precise reasoning, not the embedder.
-
 HashingVectorizer uses the hashing trick to produce a fixed-size
 sparse vector from text without needing to fit on a corpus first.
 We convert to dense and L2-normalize so cosine similarity == dot product.

@@ -135,7 +135,7 @@ RICH_KEYWORDS = [
     "billion", "equity", "share", "dividend", "debt", "asset", "liability", "expense",
     "director", "auditor", "promoter", "subsidiary", "board", "incorporat", "registered",
     "cin", "sebi", "bse", "nse", "fy2", "fy1", "growth", "headcount", "customer",
-    "delhivery", "limited", "restated", "consolidated", "standalone"
+    "company", "corporate", "statement", "restated", "consolidated", "standalone"
 ]
 
 def _score_page_richness(text: str) -> float:

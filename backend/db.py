@@ -1,8 +1,5 @@
 """
 SQLite persistence layer.
-
-Kept intentionally thin — raw SQL with sqlite3 so the data model is
-completely transparent. No ORM magic hiding what's happening underneath.
 """
 
 import sqlite3

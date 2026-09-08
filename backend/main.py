@@ -125,7 +125,7 @@ async def upload_pdf(file: UploadFile = File(...)):
     relationships_created = 0
 
     if existing_facts:
-        candidates = find_candidate_pairs(new_facts, existing_facts)[:8]
+        candidates = find_candidate_pairs(new_facts, existing_facts)[:20]
 
         # Resolve document names for readable comparison prompts
         doc_cache = {}

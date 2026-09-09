@@ -57,16 +57,7 @@ Reads financial and legal PDFs, pulls out specific facts and numbers, grounds ev
 
 ## Video Demo
 
-> 📹 **Video Demo Link:** [Watch Demo on Loom / Drive](YOUR_VIDEO_DEMO_LINK_HERE) *(Under 3 minutes)*
->
-> **What the demo covers:**
-> 1. Uploading PDF filings and showing the real-time extraction progress.
-> 2. Inspecting extracted facts with their exact quotes and page numbers.
-> 3. The four required cases:
->    - **Case 1 (Corroboration):** The same number reported across two documents in different formats.
->    - **Case 2 (Contradiction):** Real conflict between two filings.
->    - **Case 3 (Reconciliation):** An apparent difference explained by period or reporting scope.
->    - **Case 4 (Extraction Failure):** Messy tables or bad formatting flagged honestly with confidence scores.
+> 📹 **Video Demo Link:** [Watch Demo on Drive]([YOUR_VIDEO_DEMO_LINK_HERE](https://drive.google.com/file/d/1sLnw-nexLpUijM1htwPvLS5JULkl343r/view?usp=drivesdk)) *(a little more than 3 mins)*
 
 ---
 

@@ -57,7 +57,7 @@ Reads financial and legal PDFs, pulls out specific facts and numbers, grounds ev
 
 ## Video Demo
 
-> 📹 **Video Demo Link:** [Watch Demo on Drive]([YOUR_VIDEO_DEMO_LINK_HERE](https://drive.google.com/file/d/1sLnw-nexLpUijM1htwPvLS5JULkl343r/view?usp=drivesdk)) *(a little more than 3 mins)*
+> 📹 **Video Demo Link:** [Watch Demo on Drive](https://drive.google.com/file/d/1sLnw-nexLpUijM1htwPvLS5JULkl343r/view?usp=drivesdk) *(a little more than 3 mins)*
 
 ---
 

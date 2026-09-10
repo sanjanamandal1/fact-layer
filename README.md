@@ -23,7 +23,7 @@ Reads financial and legal PDFs, pulls out specific facts and numbers, grounds ev
 
 1. Clone repository and go to the backend folder:
    ```bash
-   git clone <your-repo-url>
+   git clone <git clone https://github.com/sanjanamandal1/fact-layer.git>
    cd fact-knowledge-layer/backend
    ```
 
